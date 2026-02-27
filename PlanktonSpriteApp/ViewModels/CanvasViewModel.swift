@@ -7,15 +7,12 @@
 
 
 import SwiftUI
-import Combine
 
 /// Steuert alles rund ums Zeichnen auf dem Canvas.
 /// Die View bindet sich an die @Published Properties,
 /// das ViewModel ruft Operationen auf dem Model auf.
 class CanvasViewModel: ObservableObject {
-    var objectWillChange = ObservableObjectPublisher()
-    
-    
+
     // MARK: - Werkzeuge
     
     /// Die drei verfügbaren Zeichenwerkzeuge

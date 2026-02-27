@@ -8,7 +8,6 @@
 import SwiftUI
 import ImageIO
 import UniformTypeIdentifiers
-import Combine
 #if canImport(AppKit)
 import AppKit
 #endif
@@ -21,9 +20,7 @@ import UIKit
 /// Animiertes GIF und PNG-Spritesheet.
 /// Stellt die Daten bereit, die der ShareSheet braucht.
 class ExportViewModel: ObservableObject {
-    // TODO: Ensure types `SpriteFrame` and `PixelCanvas` are available in this target.
-    // If they are defined in another module, import that module here.
-    
+
     // MARK: - Published State
     
     /// Ist gerade ein Export am Laufen?
@@ -59,19 +56,24 @@ class ExportViewModel: ObservableObject {
     /// 3. URL ans ShareSheet übergeben
     func exportGIF() {
         guard let frameVM = frameViewModel else { return }
-        
+
         isExporting = true
         errorMessage = nil
-        
+
+        // Capture frame data on main thread to avoid race condition
+        let frames = frameVM.frames
+        let fps = frameVM.project.fps
+        let name = frameVM.project.name
+
         // Auf Background-Thread, damit die UI nicht einfriert
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
             guard let self = self else { return }
-            
+
             do {
                 let url = try self.createGIF(
-                    frames: frameVM.frames,
-                    fps: frameVM.project.fps,
-                    name: frameVM.project.name
+                    frames: frames,
+                    fps: fps,
+                    name: name
                 )
                 
                 DispatchQueue.main.async {
@@ -147,17 +149,21 @@ class ExportViewModel: ObservableObject {
     /// Perfekt für SpriteKit, Unity, oder jede andere Game Engine.
     func exportSpritesheet() {
         guard let frameVM = frameViewModel else { return }
-        
+
         isExporting = true
         errorMessage = nil
-        
+
+        // Capture frame data on main thread to avoid race condition
+        let frames = frameVM.frames
+        let name = frameVM.project.name
+
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
             guard let self = self else { return }
-            
+
             do {
                 let url = try self.createSpritesheet(
-                    frames: frameVM.frames,
-                    name: frameVM.project.name
+                    frames: frames,
+                    name: name
                 )
                 
                 DispatchQueue.main.async {

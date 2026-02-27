@@ -254,6 +254,9 @@ private struct MouseTrackingView: NSViewRepresentable {
         var onExit: (() -> Void)?
         private var trackingArea: NSTrackingArea?
 
+        // Flip coordinate system to match SwiftUI (y=0 at top)
+        override var isFlipped: Bool { true }
+
         override func updateTrackingAreas() {
             super.updateTrackingAreas()
             if let area = trackingArea { removeTrackingArea(area) }
