@@ -202,6 +202,16 @@ class CanvasViewModel: ObservableObject {
         canRedo = !redoStack.isEmpty
     }
     
+    // MARK: - Undo/Redo zurücksetzen
+
+    /// Löscht die Undo/Redo-Historie.
+    /// Wird beim Laden/Neu-Erstellen eines Projekts aufgerufen.
+    func resetUndoHistory() {
+        undoStack.removeAll()
+        redoStack.removeAll()
+        updateUndoRedoState()
+    }
+
     // MARK: - Canvas leeren
     
     /// Löscht alle Pixel des aktiven Frames

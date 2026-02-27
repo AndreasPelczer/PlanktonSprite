@@ -21,11 +21,14 @@ class FrameViewModel: ObservableObject {
     
     /// Index des aktuell bearbeiteten Frames
     @Published var activeFrameIndex: Int = 0
+
+    /// Pfad der aktuell geöffneten Datei (nil = noch nicht gespeichert)
+    @Published var currentFileURL: URL?
     
     // MARK: - Limits
     
     /// Maximale Anzahl erlaubter Frames
-    let maxFrames = 8
+    let maxFrames = 24
     
     // MARK: - Init
     
@@ -147,6 +150,36 @@ class FrameViewModel: ObservableObject {
         moveFrame(from: sourceIndex, to: adjustedDest)
     }
     
+    // MARK: - Projekt: Neu / Speichern / Laden
+
+    /// Erstellt ein neues leeres Projekt
+    func newProject() {
+        project = AnimationProject()
+        activeFrameIndex = 0
+        currentFileURL = nil
+    }
+
+    /// Speichert das Projekt als .plankton JSON-Datei
+    func saveProject(to url: URL) throws {
+        let file = ProjectFile(from: project)
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = .prettyPrinted
+        let data = try encoder.encode(file)
+        try data.write(to: url)
+        currentFileURL = url
+        // Projektname aus Dateiname übernehmen
+        project.name = url.deletingPathExtension().lastPathComponent
+    }
+
+    /// Lädt ein Projekt aus einer .plankton Datei
+    func loadProject(from url: URL) throws {
+        let data = try Data(contentsOf: url)
+        let file = try JSONDecoder().decode(ProjectFile.self, from: data)
+        project = file.toProject()
+        activeFrameIndex = 0
+        currentFileURL = url
+    }
+
     // MARK: - Navigation
     
     /// Wechselt zum nächsten Frame (mit Wraparound)
