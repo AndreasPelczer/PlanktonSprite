@@ -6,6 +6,7 @@
 //
 
 import SwiftUI
+import Combine
 import ImageIO
 import UniformTypeIdentifiers
 #if canImport(AppKit)

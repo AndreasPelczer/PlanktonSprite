@@ -7,6 +7,7 @@
 
 
 import SwiftUI
+import Combine
 
 /// Verwaltet alle Frames des Projekts.
 /// Zuständig für: aktiver Frame, hinzufügen, löschen,

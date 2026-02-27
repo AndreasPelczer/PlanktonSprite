@@ -66,7 +66,10 @@ extension SpriteFrame: Transferable {
 /// Wir kodieren nur die ID, nicht die Pixel.
 /// Die Pixel bewegen sich nirgendwohin – wir sortieren
 /// nur die Reihenfolge im Array um.
-extension SpriteFrame: Codable {
+/// @preconcurrency löst den Konflikt mit Swift Strict Concurrency:
+/// CodableRepresentation verlangt Sendable, aber SwiftUI-Imports
+/// können die Konformität als @MainActor-isoliert inferieren.
+extension SpriteFrame: @preconcurrency Codable {
     enum CodingKeys: String, CodingKey {
         case id
     }
