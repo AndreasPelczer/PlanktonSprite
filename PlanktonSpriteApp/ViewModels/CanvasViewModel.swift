@@ -7,6 +7,7 @@
 
 
 import SwiftUI
+import Combine
 
 /// Steuert alles rund ums Zeichnen auf dem Canvas.
 /// Die View bindet sich an die @Published Properties,
