@@ -7,15 +7,12 @@
 
 
 import SwiftUI
-import Combine
 
 /// Verwaltet alle Frames des Projekts.
 /// Zuständig für: aktiver Frame, hinzufügen, löschen,
 /// duplizieren, umsortieren.
 class FrameViewModel: ObservableObject {
-    let objectWillChange = ObservableObjectPublisher()
-    
-    
+
     // MARK: - Published State
     
     /// Das komplette Animationsprojekt mit allen Frames
