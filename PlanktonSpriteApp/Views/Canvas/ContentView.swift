@@ -8,8 +8,8 @@
 import SwiftUI
 
 /// Root View der App.
-/// Dreispaltiges Layout: Links Canvas mit Tools,
-/// Rechts Frames und Preview.
+/// Oben: Frame-Leiste mit Neu/Kopieren/Löschen.
+/// Unten: Links Canvas mit Tools, Rechts Preview.
 struct ContentView: View {
     
     @EnvironmentObject var frameVM: FrameViewModel
@@ -17,76 +17,95 @@ struct ContentView: View {
     @EnvironmentObject var exportVM: ExportViewModel
     
     var body: some View {
-        HStack(spacing: 0) {
-            
-            // MARK: - Linke Seite: Canvas-Bereich
-            
-            VStack(spacing: 12) {
-                // Toolbar: Werkzeuge, Undo/Redo, Grid
-                ToolBarView()
-                
-                // Das 32×32 Pixel-Canvas
-                PixelCanvasView()
-                
-                // Farbpalette
-                ColorPaletteView()
+        VStack(spacing: 0) {
+
+            // MARK: - Oben: Frame-Leiste
+
+            VStack(spacing: 8) {
+                HStack {
+                    sectionHeader("FRAMES", count: frameVM.frameCount)
+
+                    Spacer()
+
+                    HStack(spacing: 6) {
+                        Button {
+                            frameVM.addFrame()
+                        } label: {
+                            Label("Neu", systemImage: "plus")
+                                .font(.system(size: 11, weight: .semibold))
+                        }
+                        .buttonStyle(.bordered)
+                        .controlSize(.small)
+                        .disabled(!frameVM.canAddFrame)
+
+                        Button {
+                            frameVM.duplicateActiveFrame()
+                        } label: {
+                            Label("Kopieren", systemImage: "doc.on.doc")
+                                .font(.system(size: 11, weight: .semibold))
+                        }
+                        .buttonStyle(.bordered)
+                        .controlSize(.small)
+                        .disabled(!frameVM.canAddFrame)
+
+                        Button {
+                            frameVM.deleteActiveFrame()
+                        } label: {
+                            Label("Löschen", systemImage: "trash")
+                                .font(.system(size: 11, weight: .semibold))
+                        }
+                        .buttonStyle(.bordered)
+                        .controlSize(.small)
+                        .tint(.red)
+                        .disabled(frameVM.frameCount <= 1)
+                    }
+                }
+
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 8) {
+                        ForEach(Array(frameVM.frames.enumerated()), id: \.element.id) { index, frame in
+                            frameThumb(index: index, frame: frame)
+                        }
+                    }
+                    .padding(.horizontal, 4)
+                }
             }
-            .padding(16)
-            
+            .padding(.horizontal, 16)
+            .padding(.vertical, 10)
+            .background(.background.opacity(0.5))
+
             // Trennlinie
             Rectangle()
                 .fill(.quaternary)
-                .frame(width: 1)
-            
-            // MARK: - Rechte Seite: Frames + Preview
-            
-            VStack(spacing: 0) {
-                // Obere Hälfte: Frame-Thumbnails
-                // (Platzhalter bis FrameStripView fertig ist)
-                VStack(spacing: 10) {
-                    sectionHeader("FRAMES", count: frameVM.frameCount)
-                    
-                    HStack(spacing: 6) {
-                        Button("+ Neu") { frameVM.addFrame() }
-                            .buttonStyle(.bordered)
-                            .controlSize(.small)
-                            .disabled(!frameVM.canAddFrame)
-                        
-                        Button("⧉ Kopie") { frameVM.duplicateActiveFrame() }
-                            .buttonStyle(.bordered)
-                            .controlSize(.small)
-                            .disabled(!frameVM.canAddFrame)
-                    }
-                    
-                    // Einfache Frame-Liste
-                    ScrollView(.horizontal, showsIndicators: false) {
-                        HStack(spacing: 8) {
-                            ForEach(Array(frameVM.frames.enumerated()), id: \.element.id) { index, frame in
-                                frameThumb(index: index, frame: frame)
-                            }
-                        }
-                        .padding(.horizontal, 4)
-                    }
-                    
-                    Spacer()
+                .frame(height: 1)
+
+            // MARK: - Unten: Canvas + Preview
+
+            HStack(spacing: 0) {
+
+                // Linke Seite: Canvas-Bereich
+                VStack(spacing: 12) {
+                    ToolBarView()
+                    PixelCanvasView()
+                    ColorPaletteView()
                 }
-                .padding(12)
-                
+                .padding(16)
+
+                // Trennlinie
                 Rectangle()
                     .fill(.quaternary)
-                    .frame(height: 1)
-                
-                // Untere Hälfte: Animation Preview
-                // (Platzhalter bis AnimationPreviewView fertig ist)
+                    .frame(width: 1)
+
+                // Rechte Seite: Vorschau + Export
                 VStack(spacing: 10) {
                     sectionHeader("VORSCHAU", fps: frameVM.project.fps)
-                    
+
                     // FPS Slider
                     HStack(spacing: 8) {
                         Text("1")
                             .font(.system(size: 9, design: .monospaced))
                             .foregroundStyle(.tertiary)
-                        
+
                         Slider(
                             value: Binding(
                                 get: { Double(frameVM.project.fps) },
@@ -96,17 +115,17 @@ struct ContentView: View {
                             step: 1
                         )
                         .controlSize(.small)
-                        
+
                         Text("24")
                             .font(.system(size: 9, design: .monospaced))
                             .foregroundStyle(.tertiary)
                     }
-                    
-                    // Preview-Fläche (einfache Frame-Anzeige)
+
+                    // Preview-Fläche
                     previewCanvas
-                    
+
                     Spacer()
-                    
+
                     // Export-Buttons
                     HStack(spacing: 8) {
                         Button {
@@ -119,7 +138,7 @@ struct ContentView: View {
                         .controlSize(.small)
                         .tint(.pink)
                         .disabled(exportVM.isExporting)
-                        
+
                         Button {
                             exportVM.exportSpritesheet()
                         } label: {
@@ -132,9 +151,9 @@ struct ContentView: View {
                     }
                 }
                 .padding(12)
+                .frame(width: 240)
+                .background(.background.opacity(0.5))
             }
-            .frame(width: 240)
-            .background(.background.opacity(0.5))
         }
         .frame(minWidth: 750, minHeight: 580)
         .background(Color(red: 0.1, green: 0.1, blue: 0.14))
