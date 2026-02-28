@@ -161,6 +161,10 @@ class FrameViewModel: ObservableObject {
 
     /// Speichert das Projekt als .plankton JSON-Datei
     func saveProject(to url: URL) throws {
+        // Security-scoped Access für iOS Sandbox
+        let didStartAccess = url.startAccessingSecurityScopedResource()
+        defer { if didStartAccess { url.stopAccessingSecurityScopedResource() } }
+
         let file = ProjectFile(from: project)
         let encoder = JSONEncoder()
         encoder.outputFormatting = .prettyPrinted
@@ -173,6 +177,10 @@ class FrameViewModel: ObservableObject {
 
     /// Lädt ein Projekt aus einer .plankton Datei
     func loadProject(from url: URL) throws {
+        // Security-scoped Access für iOS Sandbox
+        let didStartAccess = url.startAccessingSecurityScopedResource()
+        defer { if didStartAccess { url.stopAccessingSecurityScopedResource() } }
+
         let data = try Data(contentsOf: url)
         let file = try JSONDecoder().decode(ProjectFile.self, from: data)
         project = file.toProject()

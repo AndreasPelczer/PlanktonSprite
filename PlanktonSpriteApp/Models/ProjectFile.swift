@@ -6,6 +6,7 @@
 //
 
 import SwiftUI
+import UniformTypeIdentifiers
 
 /// Serialisierbares Dateiformat für .plankton Dateien.
 /// Wandelt das AnimationProject in JSON-kompatible Daten um.
@@ -71,6 +72,33 @@ struct ProjectFile: Codable {
             project.frames = [SpriteFrame()]
         }
         return project
+    }
+}
+
+// MARK: - FileDocument Wrapper
+
+/// SwiftUI FileDocument-Wrapper für plattformübergreifendes Speichern/Öffnen.
+struct PlanktonDocument: FileDocument {
+
+    static var readableContentTypes: [UTType] {
+        [UTType(filenameExtension: "plankton") ?? .json]
+    }
+
+    var data: Data
+
+    init(data: Data) {
+        self.data = data
+    }
+
+    init(configuration: ReadConfiguration) throws {
+        guard let data = configuration.file.regularFileContents else {
+            throw CocoaError(.fileReadCorruptFile)
+        }
+        self.data = data
+    }
+
+    func fileWrapper(configuration: WriteConfiguration) throws -> FileWrapper {
+        FileWrapper(regularFileWithContents: data)
     }
 }
 

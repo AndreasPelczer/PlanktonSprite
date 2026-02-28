@@ -8,9 +8,6 @@
 
 import SwiftUI
 import UniformTypeIdentifiers
-#if canImport(AppKit)
-import AppKit
-#endif
 
 /// Entry Point der App.
 /// Hier werden alle ViewModels erzeugt und miteinander verbunden.
@@ -25,6 +22,17 @@ struct PlanktonSpriteApp: App {
     @StateObject private var canvasVM = CanvasViewModel()
     @StateObject private var exportVM = ExportViewModel()
 
+    // MARK: - Datei-Dialog State
+
+    /// Steuert ob der "Speichern unter"-Dialog angezeigt wird
+    @State private var showSaveDialog = false
+
+    /// Steuert ob der "Öffnen"-Dialog angezeigt wird
+    @State private var showOpenDialog = false
+
+    /// Das Dokument das gespeichert werden soll (wird vor dem Dialog erstellt)
+    @State private var documentToSave: PlanktonDocument?
+
     // MARK: - Body
 
     var body: some Scene {
@@ -36,6 +44,40 @@ struct PlanktonSpriteApp: App {
                 .onAppear {
                     canvasVM.connect(to: frameVM)
                     exportVM.connect(to: frameVM)
+                }
+                // MARK: - Speichern unter (plattformübergreifend)
+                .fileExporter(
+                    isPresented: $showSaveDialog,
+                    document: documentToSave,
+                    contentType: UTType(filenameExtension: "plankton") ?? .json,
+                    defaultFilename: "\(frameVM.project.name).plankton"
+                ) { result in
+                    switch result {
+                    case .success(let url):
+                        frameVM.currentFileURL = url
+                        frameVM.project.name = url.deletingPathExtension().lastPathComponent
+                    case .failure(let error):
+                        print("Speichern fehlgeschlagen: \(error.localizedDescription)")
+                    }
+                }
+                // MARK: - Öffnen (plattformübergreifend)
+                .fileImporter(
+                    isPresented: $showOpenDialog,
+                    allowedContentTypes: [UTType(filenameExtension: "plankton") ?? .json],
+                    allowsMultipleSelection: false
+                ) { result in
+                    switch result {
+                    case .success(let urls):
+                        guard let url = urls.first else { return }
+                        do {
+                            try frameVM.loadProject(from: url)
+                            canvasVM.resetUndoHistory()
+                        } catch {
+                            print("Öffnen fehlgeschlagen: \(error.localizedDescription)")
+                        }
+                    case .failure(let error):
+                        print("Öffnen fehlgeschlagen: \(error.localizedDescription)")
+                    }
                 }
         }
         .commands {
@@ -49,7 +91,7 @@ struct PlanktonSpriteApp: App {
                 .keyboardShortcut("n")
 
                 Button("Öffnen…") {
-                    openFile()
+                    showOpenDialog = true
                 }
                 .keyboardShortcut("o")
 
@@ -125,7 +167,7 @@ struct PlanktonSpriteApp: App {
         }
     }
 
-    // MARK: - Datei-Dialoge
+    // MARK: - Datei-Operationen
 
     /// Speichern: wenn schon ein Pfad bekannt ist, direkt überschreiben.
     /// Sonst "Speichern unter" aufrufen.
@@ -134,53 +176,24 @@ struct PlanktonSpriteApp: App {
             do {
                 try frameVM.saveProject(to: url)
             } catch {
-                print("Speichern fehlgeschlagen: \(error.localizedDescription)")
+                // Direktes Speichern fehlgeschlagen → Dialog zeigen
+                saveFileAs()
             }
         } else {
             saveFileAs()
         }
     }
 
-    /// Speichern unter: NSSavePanel anzeigen
+    /// Speichern unter: Projekt als JSON kodieren und Dialog anzeigen
     private func saveFileAs() {
-        #if os(macOS)
-        let panel = NSSavePanel()
-        panel.title = "Projekt speichern"
-        panel.nameFieldStringValue = "\(frameVM.project.name).plankton"
-        panel.allowedContentTypes = [
-            UTType(filenameExtension: "plankton") ?? .json
-        ]
-        // runModal() statt begin() – zuverlässiger aus SwiftUI commands
-        let response = panel.runModal()
-        if response == .OK, let url = panel.url {
-            do {
-                try frameVM.saveProject(to: url)
-            } catch {
-                print("Speichern fehlgeschlagen: \(error.localizedDescription)")
-            }
+        let file = ProjectFile(from: frameVM.project)
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = .prettyPrinted
+        guard let data = try? encoder.encode(file) else {
+            print("Speichern fehlgeschlagen: Projekt konnte nicht kodiert werden")
+            return
         }
-        #endif
-    }
-
-    /// Öffnen: NSOpenPanel anzeigen
-    private func openFile() {
-        #if os(macOS)
-        let panel = NSOpenPanel()
-        panel.title = "Projekt öffnen"
-        panel.allowedContentTypes = [
-            UTType(filenameExtension: "plankton") ?? .json
-        ]
-        panel.allowsMultipleSelection = false
-        // runModal() statt begin() – zuverlässiger aus SwiftUI commands
-        let response = panel.runModal()
-        if response == .OK, let url = panel.url {
-            do {
-                try frameVM.loadProject(from: url)
-                canvasVM.resetUndoHistory()
-            } catch {
-                print("Öffnen fehlgeschlagen: \(error.localizedDescription)")
-            }
-        }
-        #endif
+        documentToSave = PlanktonDocument(data: data)
+        showSaveDialog = true
     }
 }
