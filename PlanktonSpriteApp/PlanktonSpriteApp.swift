@@ -150,13 +150,13 @@ struct PlanktonSpriteApp: App {
         panel.allowedContentTypes = [
             UTType(filenameExtension: "plankton") ?? .json
         ]
-        panel.begin { response in
-            if response == .OK, let url = panel.url {
-                do {
-                    try frameVM.saveProject(to: url)
-                } catch {
-                    print("Speichern fehlgeschlagen: \(error.localizedDescription)")
-                }
+        // runModal() statt begin() – zuverlässiger aus SwiftUI commands
+        let response = panel.runModal()
+        if response == .OK, let url = panel.url {
+            do {
+                try frameVM.saveProject(to: url)
+            } catch {
+                print("Speichern fehlgeschlagen: \(error.localizedDescription)")
             }
         }
         #endif
@@ -171,14 +171,14 @@ struct PlanktonSpriteApp: App {
             UTType(filenameExtension: "plankton") ?? .json
         ]
         panel.allowsMultipleSelection = false
-        panel.begin { response in
-            if response == .OK, let url = panel.url {
-                do {
-                    try frameVM.loadProject(from: url)
-                    canvasVM.resetUndoHistory()
-                } catch {
-                    print("Öffnen fehlgeschlagen: \(error.localizedDescription)")
-                }
+        // runModal() statt begin() – zuverlässiger aus SwiftUI commands
+        let response = panel.runModal()
+        if response == .OK, let url = panel.url {
+            do {
+                try frameVM.loadProject(from: url)
+                canvasVM.resetUndoHistory()
+            } catch {
+                print("Öffnen fehlgeschlagen: \(error.localizedDescription)")
             }
         }
         #endif
