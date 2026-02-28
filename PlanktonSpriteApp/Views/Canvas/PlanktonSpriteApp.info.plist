@@ -2,10 +2,6 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-    <key>CFBundleIdentifier</key>
-    <string>com.planktonsprite.app</string>
-    <key>CFBundleName</key>
-    <string>PlanktonSpriteApp</string>
     <key>UTExportedTypeDeclarations</key>
     <array>
         <dict>
@@ -17,6 +13,8 @@
             <string>Plankton Sprite Frame</string>
             <key>UTTypeIdentifier</key>
             <string>com.planktonsprite.frame</string>
+            <key>UTTypeTagSpecification</key>
+            <dict/>
         </dict>
     </array>
 </dict>
