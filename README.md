@@ -1,6 +1,21 @@
-# PlanktonSprite
-du malst deine Plankton-Sprites, exportierst als GIF, schickst per WhatsApp oder lädst sie direkt in dein Spiel. Ein Tool, mehrere Outputs.
+# Daumenkino-GIF (ehem. PlanktonSprite)
 
-Universal App (iPhone + iPad) – ein Codebase, adaptives Layout. Auf dem iPad das Drei-Spalten-Layout wie im Prototyp, auf dem iPhone stapelt sich alles vertikal mit Tab-Umschaltung zwischen Canvas, Frames und Preview.
-GIF-Export – über ImageIO/CGImageDestination direkt ein animiertes GIF erzeugen, das du per UIActivityViewController an WhatsApp, iMessage, Mail oder AirDrop schicken kannst.
-Sprite-Export – zusätzlich PNG-Spritesheet für die direkte Nutzung in SpriteKit/deinen Spielen.
+Pixel-Sprite-Animator — zeichne Sprites auf einem 32×32 Canvas, animiere Frame für Frame und exportiere als GIF oder Spritesheet.
+
+## Features
+
+- **32×32 Pixel Canvas** mit Zeichenwerkzeugen (Stift, Radierer, Füllung)
+- **Multi-Frame Animation** — bis zu 24 Frames, einstellbare FPS (1–24)
+- **GIF-Export** — animiertes GIF via ImageIO/CGImageDestination, teilbar per WhatsApp, iMessage, Mail, AirDrop
+- **PNG-Spritesheet-Export** — für SpriteKit, Unity und andere Game Engines
+- **Universal App** (iPhone + iPad + macOS) — adaptives Layout, ein Codebase
+- **Undo/Redo** — Stack-basiert mit bis zu 20 Schritten
+- **Projektdateien** — eigenes .plankton-Format (JSON-basiert)
+
+## Tech Stack
+
+Swift · SwiftUI · CoreGraphics · ImageIO · UniformTypeIdentifiers
+
+## Status
+
+In Entwicklung — wird zu **Daumenkino-GIF** umbenannt.
