@@ -30,7 +30,7 @@ struct AnimationProject {
     // MARK: - Init
     
     /// Erzeugt ein neues Projekt mit einem leeren Frame
-    init(name: String = "Plankton") {
+    init(name: String = "Daumenkino") {
         self.name = name
         self.fps = 6
         self.frames = [SpriteFrame()]
