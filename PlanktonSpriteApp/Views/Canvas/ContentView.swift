@@ -6,17 +6,117 @@
 //
 
 import SwiftUI
+import UniformTypeIdentifiers
+#if canImport(UIKit)
+import UIKit
+#endif
 
 /// Root View der App.
 /// Oben: Frame-Leiste mit Neu/Kopieren/Löschen.
 /// Unten: Links Canvas mit Tools, Rechts Preview.
 struct ContentView: View {
-    
+
     @EnvironmentObject var frameVM: FrameViewModel
     @EnvironmentObject var canvasVM: CanvasViewModel
     @EnvironmentObject var exportVM: ExportViewModel
-    
+
+    /// Steuert ob der "Speichern unter"-Dialog angezeigt wird (iPad)
+    @State private var showSaveDialog = false
+    /// Steuert ob der "Öffnen"-Dialog angezeigt wird (iPad)
+    @State private var showOpenDialog = false
+    /// Das Dokument das gespeichert werden soll
+    @State private var documentToSave: PlanktonDocument?
+
     var body: some View {
+        mainContent
+        #if os(macOS)
+        .frame(minWidth: 750, minHeight: 580)
+        #endif
+        .background(Color(red: 0.1, green: 0.1, blue: 0.14))
+        .preferredColorScheme(.dark)
+        // Keyboard Shortcuts
+        .keyboardShortcut("z", modifiers: .command, action: canvasVM.undo)
+        .keyboardShortcut("z", modifiers: [.command, .shift], action: canvasVM.redo)
+        // MARK: - Share Sheet (Export)
+        .sheet(isPresented: $exportVM.showShareSheet) {
+            exportVM.cleanup()
+        } content: {
+            if let url = exportVM.exportedFileURL {
+                #if os(iOS)
+                ShareSheetView(activityItems: [url])
+                #else
+                VStack(spacing: 16) {
+                    Text("Exportiert!")
+                        .font(.headline)
+                    Text(url.lastPathComponent)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    Button("OK") { exportVM.cleanup() }
+                        .buttonStyle(.borderedProminent)
+                }
+                .padding(40)
+                #endif
+            }
+        }
+    }
+
+    /// Der Hauptinhalt – wird auf iPad in NavigationStack gewrappt
+    @ViewBuilder
+    private var mainContent: some View {
+        #if os(iOS)
+        NavigationStack {
+            innerContent
+                .toolbar {
+                    ToolbarItemGroup(placement: .topBarLeading) {
+                        Button {
+                            frameVM.newProject()
+                            canvasVM.resetUndoHistory()
+                        } label: {
+                            Label("Neu", systemImage: "doc.badge.plus")
+                        }
+
+                        Button {
+                            showOpenDialog = true
+                        } label: {
+                            Label("Öffnen", systemImage: "folder")
+                        }
+
+                        Button {
+                            saveFile()
+                        } label: {
+                            Label("Speichern", systemImage: "square.and.arrow.down")
+                        }
+                    }
+                }
+                .navigationBarTitleDisplayMode(.inline)
+                .fileExporter(
+                    isPresented: $showSaveDialog,
+                    document: documentToSave,
+                    contentType: UTType(filenameExtension: "plankton") ?? .json,
+                    defaultFilename: "\(frameVM.project.name).plankton"
+                ) { result in
+                    if case .success(let url) = result {
+                        frameVM.currentFileURL = url
+                        frameVM.project.name = url.deletingPathExtension().lastPathComponent
+                    }
+                }
+                .fileImporter(
+                    isPresented: $showOpenDialog,
+                    allowedContentTypes: [UTType(filenameExtension: "plankton") ?? .json],
+                    allowsMultipleSelection: false
+                ) { result in
+                    if case .success(let urls) = result, let url = urls.first {
+                        try? frameVM.loadProject(from: url)
+                        canvasVM.resetUndoHistory()
+                    }
+                }
+        }
+        #else
+        innerContent
+        #endif
+    }
+
+    private var innerContent: some View {
         VStack(spacing: 0) {
 
             // MARK: - Oben: Frame-Leiste
@@ -155,14 +255,8 @@ struct ContentView: View {
                 .background(.background.opacity(0.5))
             }
         }
-        .frame(minWidth: 750, minHeight: 580)
-        .background(Color(red: 0.1, green: 0.1, blue: 0.14))
-        .preferredColorScheme(.dark)
-        // Keyboard Shortcuts
-        .keyboardShortcut("z", modifiers: .command, action: canvasVM.undo)
-        .keyboardShortcut("z", modifiers: [.command, .shift], action: canvasVM.redo)
     }
-    
+
     // MARK: - Subviews
     
     /// Section Header mit Label
@@ -310,7 +404,49 @@ struct ContentView: View {
         let totalFrames = frameVM.frameCount
         return Int(elapsed * fps) % totalFrames
     }
+
+    // MARK: - iPad Save
+
+    #if os(iOS)
+    /// Speichern: wenn schon ein Pfad bekannt ist, direkt überschreiben.
+    /// Sonst "Speichern unter" aufrufen.
+    private func saveFile() {
+        if let url = frameVM.currentFileURL {
+            do {
+                try frameVM.saveProject(to: url)
+            } catch {
+                saveFileAs()
+            }
+        } else {
+            saveFileAs()
+        }
+    }
+
+    private func saveFileAs() {
+        let file = ProjectFile(from: frameVM.project)
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = .prettyPrinted
+        guard let data = try? encoder.encode(file) else { return }
+        documentToSave = PlanktonDocument(data: data)
+        showSaveDialog = true
+    }
+    #endif
 }
+
+// MARK: - Share Sheet (iOS)
+
+#if os(iOS)
+/// Wrapper für UIActivityViewController – das Standard-Teilen-Menü auf iOS/iPad.
+struct ShareSheetView: UIViewControllerRepresentable {
+    let activityItems: [Any]
+
+    func makeUIViewController(context: Context) -> UIActivityViewController {
+        UIActivityViewController(activityItems: activityItems, applicationActivities: nil)
+    }
+
+    func updateUIViewController(_ uiViewController: UIActivityViewController, context: Context) {}
+}
+#endif
 
 // MARK: - Keyboard Shortcut Extension
 
