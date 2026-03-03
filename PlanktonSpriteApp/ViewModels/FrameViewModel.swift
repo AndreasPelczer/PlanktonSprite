@@ -81,6 +81,7 @@ class FrameViewModel: ObservableObject {
         guard canAddFrame else { return }
         let newIndex = project.insertFrame(after: activeFrameIndex)
         activeFrameIndex = newIndex
+        autosave()
     }
     
     /// Dupliziert den aktiven Frame.
@@ -89,6 +90,7 @@ class FrameViewModel: ObservableObject {
         guard canAddFrame else { return }
         if let newIndex = project.duplicateFrame(at: activeFrameIndex) {
             activeFrameIndex = newIndex
+            autosave()
         }
     }
     
@@ -109,6 +111,7 @@ class FrameViewModel: ObservableObject {
             activeFrameIndex = min(activeFrameIndex, frameCount - 1)
         }
         // Frame nach dem aktiven gelöscht → aktiver Index bleibt
+        autosave()
     }
     
     /// Löscht den aktuell aktiven Frame
@@ -123,17 +126,18 @@ class FrameViewModel: ObservableObject {
     /// aktiv bleibt – nicht der gleiche INDEX.
     func moveFrame(from source: Int, to destination: Int) {
         guard project.isValidIndex(source) else { return }
-        
+
         // Merken welcher Frame aktiv ist (nicht welcher Index)
         let activeID = activeFrame?.id
-        
+
         project.moveFrame(from: source, to: destination)
-        
+
         // Aktiven Frame wiederfinden nach dem Verschieben
         if let activeID,
            let newIndex = project.frames.firstIndex(where: { $0.id == activeID }) {
             activeFrameIndex = newIndex
         }
+        autosave()
     }
     
     /// SwiftUI-kompatible Move-Funktion für .onMove Modifier.
@@ -169,7 +173,7 @@ class FrameViewModel: ObservableObject {
         let encoder = JSONEncoder()
         encoder.outputFormatting = .prettyPrinted
         let data = try encoder.encode(file)
-        try data.write(to: url)
+        try data.write(to: url, options: .atomic)
         currentFileURL = url
         // Projektname aus Dateiname übernehmen
         project.name = url.deletingPathExtension().lastPathComponent
@@ -200,6 +204,10 @@ class FrameViewModel: ObservableObject {
 
     private var autosaveTimer: Timer?
 
+    /// Zentrale Autosave-URL – vermeidet Dopplung
+    static let autosaveURL = FileManager.default.temporaryDirectory
+        .appendingPathComponent("PlanktonSprite_autosave.plankton")
+
     /// Startet den Autosave-Timer (alle 60 Sekunden)
     func startAutosave() {
         autosaveTimer?.invalidate()
@@ -214,29 +222,27 @@ class FrameViewModel: ObservableObject {
         autosaveTimer = nil
     }
 
-    /// Autosave: speichert in einen temporären Slot
-    private func autosave() {
-        let autosaveURL = FileManager.default.temporaryDirectory
-            .appendingPathComponent("PlanktonSprite_autosave.plankton")
-        try? saveProject(to: autosaveURL)
-        // currentFileURL nicht überschreiben – Autosave ist unsichtbar
-        if currentFileURL != autosaveURL {
-            currentFileURL = currentFileURL // keep original
-        }
+    /// Autosave: speichert in den temporären Slot.
+    /// Bewahrt die echte currentFileURL – Autosave ist unsichtbar für den User.
+    func autosave() {
+        let savedURL = currentFileURL
+        let file = ProjectFile(from: project)
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = .prettyPrinted
+        guard let data = try? encoder.encode(file) else { return }
+        try? data.write(to: Self.autosaveURL, options: .atomic)
+        // currentFileURL nicht verändern – Autosave ist kein "echtes" Speichern
+        currentFileURL = savedURL
     }
 
     /// Prüft ob ein Autosave existiert
     var hasAutosave: Bool {
-        let url = FileManager.default.temporaryDirectory
-            .appendingPathComponent("PlanktonSprite_autosave.plankton")
-        return FileManager.default.fileExists(atPath: url.path)
+        FileManager.default.fileExists(atPath: Self.autosaveURL.path)
     }
 
     /// Lädt den Autosave
     func loadAutosave() throws {
-        let url = FileManager.default.temporaryDirectory
-            .appendingPathComponent("PlanktonSprite_autosave.plankton")
-        try loadProject(from: url)
+        try loadProject(from: Self.autosaveURL)
         currentFileURL = nil // Autosave hat keinen "echten" Pfad
     }
 

@@ -69,27 +69,33 @@ struct PixelCanvasView: View {
         let cs = cellSize
         let cvs = canvasSize
 
-        // Onion Skin Accessors
+        // Onion Skin: Pre-render als CGImage für Performance
         let onionEnabled = canvasVM.onionSkinEnabled
         let onionOpacity = canvasVM.onionSkinOpacity
-        let onionPrev = canvasVM.onionSkinPrevious
-        let onionNext = canvasVM.onionSkinNext
-        let prevCanvas: PixelCanvas? = onionEnabled && onionPrev ? frameVM.project.frame(at: frameVM.activeFrameIndex - 1)?.canvas : nil
-        let nextCanvas: PixelCanvas? = onionEnabled && onionNext ? frameVM.project.frame(at: frameVM.activeFrameIndex + 1)?.canvas : nil
+        let prevImage: CGImage? = onionEnabled && canvasVM.onionSkinPrevious
+            ? renderOnionSkinImage(frameVM.project.frame(at: frameVM.activeFrameIndex - 1)?.canvas, gridSize: gs)
+            : nil
+        let nextImage: CGImage? = onionEnabled && canvasVM.onionSkinNext
+            ? renderOnionSkinImage(frameVM.project.frame(at: frameVM.activeFrameIndex + 1)?.canvas, gridSize: gs)
+            : nil
 
         Canvas { context, _ in
 
             // 1. Schachbrett-Hintergrund (zeigt Transparenz)
             drawCheckerboard(context: context, gridSize: gs, cellSize: cs)
 
-            // 2. Onion Skin: vorheriges Frame
-            if let prev = prevCanvas {
-                drawOnionSkin(context: context, canvas: prev, gridSize: gs, cellSize: cs, opacity: onionOpacity, tint: Color.red)
+            // 2. Onion Skin: vorheriges Frame (CGImage)
+            if let img = prevImage {
+                context.opacity = onionOpacity
+                context.draw(Image(decorative: img, scale: 1), in: CGRect(x: 0, y: 0, width: cvs, height: cvs))
+                context.opacity = 1
             }
 
-            // 3. Onion Skin: nächstes Frame
-            if let next = nextCanvas {
-                drawOnionSkin(context: context, canvas: next, gridSize: gs, cellSize: cs, opacity: onionOpacity, tint: Color.blue)
+            // 3. Onion Skin: nächstes Frame (CGImage)
+            if let img = nextImage {
+                context.opacity = onionOpacity
+                context.draw(Image(decorative: img, scale: 1), in: CGRect(x: 0, y: 0, width: cvs, height: cvs))
+                context.opacity = 1
             }
 
             // 4. Pixel zeichnen
@@ -214,21 +220,30 @@ struct PixelCanvasView: View {
         }
     }
 
-    /// Zeichnet Onion Skin Overlay eines anderen Frames.
-    private func drawOnionSkin(context: GraphicsContext, canvas: PixelCanvas, gridSize: Int, cellSize: CGFloat, opacity: Double, tint: Color) {
+    /// Rendert ein PixelCanvas als CGImage für Onion Skin Overlay.
+    /// Wird einmal pro Frame-Wechsel berechnet statt bei jedem Canvas-Redraw.
+    private func renderOnionSkinImage(_ canvas: PixelCanvas?, gridSize: Int) -> CGImage? {
+        guard let canvas = canvas else { return nil }
+        guard let ctx = CGContext(
+            data: nil,
+            width: gridSize,
+            height: gridSize,
+            bitsPerComponent: 8,
+            bytesPerRow: gridSize * 4,
+            space: CGColorSpaceCreateDeviceRGB(),
+            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+        ) else { return nil }
+
         for y in 0..<gridSize {
             for x in 0..<gridSize {
-                if let color = canvas.pixel(at: x, y: y) {
-                    let rect = CGRect(
-                        x: CGFloat(x) * cellSize,
-                        y: CGFloat(y) * cellSize,
-                        width: cellSize,
-                        height: cellSize
-                    )
-                    context.fill(Path(rect), with: .color(color.opacity(opacity)))
+                if let color = canvas.pixel(at: x, y: y),
+                   let c = color.cgColorComponents {
+                    ctx.setFillColor(red: c.r, green: c.g, blue: c.b, alpha: c.a)
+                    ctx.fill(CGRect(x: x, y: gridSize - 1 - y, width: 1, height: 1))
                 }
             }
         }
+        return ctx.makeImage()
     }
 
     /// Zeichnet die Rasterlinien – dünn und dezent.

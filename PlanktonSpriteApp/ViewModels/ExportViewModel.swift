@@ -60,6 +60,12 @@ class ExportViewModel: ObservableObject {
     /// Fehlermeldung falls der Export schiefgeht
     @Published var errorMessage: String?
 
+    /// Exportfortschritt (0.0–1.0)
+    @Published var exportProgress: Double = 0
+
+    /// Statustext während des Exports
+    @Published var exportStatus: String = ""
+
     /// GIF mit transparentem Hintergrund exportieren
     @Published var transparentBackground: Bool = false
 
@@ -92,6 +98,8 @@ class ExportViewModel: ObservableObject {
 
         isExporting = true
         errorMessage = nil
+        exportProgress = 0
+        exportStatus = "GIF wird erstellt…"
 
         let frames = frameVM.frames
         let fps = frameVM.project.fps
@@ -114,6 +122,8 @@ class ExportViewModel: ObservableObject {
                 )
 
                 DispatchQueue.main.async {
+                    self.exportProgress = 1.0
+                    self.exportStatus = "Fertig!"
                     self.exportedFileURL = url
                     self.showShareSheet = true
                     self.isExporting = false
@@ -122,6 +132,8 @@ class ExportViewModel: ObservableObject {
                 DispatchQueue.main.async {
                     self.errorMessage = "GIF-Export fehlgeschlagen: \(error.localizedDescription)"
                     self.isExporting = false
+                    self.exportProgress = 0
+                    self.exportStatus = ""
                 }
             }
         }
@@ -151,7 +163,7 @@ class ExportViewModel: ObservableObject {
 
         let defaultDelay = 1.0 / Double(fps)
 
-        for frame in frames {
+        for (index, frame) in frames.enumerated() {
             guard let cgImage = renderFrameToCGImage(frame.canvas, gridSize: gridSize, transparentBackground: transparentBackground) else {
                 throw ExportError.frameRenderFailed
             }
@@ -166,6 +178,12 @@ class ExportViewModel: ObservableObject {
             ]
 
             CGImageDestinationAddImage(destination, cgImage, frameProperties as CFDictionary)
+
+            let progress = Double(index + 1) / Double(frames.count)
+            DispatchQueue.main.async { [weak self] in
+                self?.exportProgress = progress * 0.9 // 90% für Frames, 10% für Finalize
+                self?.exportStatus = "Frame \(index + 1)/\(frames.count)…"
+            }
         }
 
         guard CGImageDestinationFinalize(destination) else {
@@ -183,6 +201,8 @@ class ExportViewModel: ObservableObject {
 
         isExporting = true
         errorMessage = nil
+        exportProgress = 0
+        exportStatus = "Spritesheet wird erstellt…"
 
         let frames = frameVM.frames
         let name = frameVM.project.name
@@ -207,6 +227,8 @@ class ExportViewModel: ObservableObject {
                 )
 
                 DispatchQueue.main.async {
+                    self.exportProgress = 1.0
+                    self.exportStatus = "Fertig!"
                     self.exportedFileURL = pngURL
                     if let jsonURL = jsonURL {
                         self.additionalExportURLs = [jsonURL]
@@ -218,6 +240,8 @@ class ExportViewModel: ObservableObject {
                 DispatchQueue.main.async {
                     self.errorMessage = "Spritesheet-Export fehlgeschlagen: \(error.localizedDescription)"
                     self.isExporting = false
+                    self.exportProgress = 0
+                    self.exportStatus = ""
                 }
             }
         }
@@ -295,7 +319,7 @@ class ExportViewModel: ObservableObject {
         guard let pngData = cgImageToPNGData(cgImage) else {
             throw ExportError.pngEncodingFailed
         }
-        try pngData.write(to: pngURL)
+        try pngData.write(to: pngURL, options: .atomic)
 
         // JSON Meta-Daten generieren
         let jsonURL = try createSpritesheetMeta(
@@ -365,6 +389,8 @@ class ExportViewModel: ObservableObject {
         }
 
         var meta: [String: Any] = [
+            "formatVersion": 1,
+            "generator": "PlanktonSprite",
             "image": pngFileName,
             "format": "RGBA8888",
             "size": ["w": dims.width, "h": dims.height],
@@ -396,7 +422,7 @@ class ExportViewModel: ObservableObject {
         let jsonData = try JSONSerialization.data(withJSONObject: meta, options: [.prettyPrinted, .sortedKeys])
         let jsonFileName = "\(name)_spritesheet.json"
         let jsonURL = FileManager.default.temporaryDirectory.appendingPathComponent(jsonFileName)
-        try jsonData.write(to: jsonURL)
+        try jsonData.write(to: jsonURL, options: .atomic)
 
         return jsonURL
     }
@@ -464,9 +490,15 @@ class ExportViewModel: ObservableObject {
         if let url = exportedFileURL {
             try? FileManager.default.removeItem(at: url)
         }
+        for url in additionalExportURLs {
+            try? FileManager.default.removeItem(at: url)
+        }
         exportedFileURL = nil
+        additionalExportURLs = []
         showShareSheet = false
         errorMessage = nil
+        exportProgress = 0
+        exportStatus = ""
     }
 }
 

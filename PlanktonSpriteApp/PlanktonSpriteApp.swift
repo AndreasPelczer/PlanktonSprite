@@ -23,6 +23,9 @@ struct PlanktonSpriteApp: App {
     @StateObject private var exportVM = ExportViewModel()
     @StateObject private var paletteManager = PaletteManager()
 
+    /// Reagiert auf App-Lifecycle (Background, Inactive)
+    @Environment(\.scenePhase) private var scenePhase
+
     // MARK: - Datei-Dialog State
 
     /// Steuert ob der "Speichern unter"-Dialog angezeigt wird
@@ -47,6 +50,11 @@ struct PlanktonSpriteApp: App {
                     canvasVM.connect(to: frameVM)
                     exportVM.connect(to: frameVM)
                     frameVM.startAutosave()
+                }
+                .onChange(of: scenePhase) { _, newPhase in
+                    if newPhase == .inactive || newPhase == .background {
+                        frameVM.autosave()
+                    }
                 }
                 // MARK: - Speichern unter (plattformübergreifend)
                 .fileExporter(
