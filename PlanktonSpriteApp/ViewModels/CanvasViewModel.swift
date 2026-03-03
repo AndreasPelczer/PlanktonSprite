@@ -360,6 +360,7 @@ class CanvasViewModel: ObservableObject {
         var canvas = currentCanvas
         canvas.clear()
         frameViewModel?.updateActiveCanvas(canvas)
+        frameViewModel?.autosave()
     }
 }
 

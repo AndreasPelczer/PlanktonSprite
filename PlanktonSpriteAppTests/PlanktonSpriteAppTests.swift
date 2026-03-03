@@ -1206,6 +1206,26 @@ struct FrameViewModelExtendedTests {
         vm.duplicateActiveFrame()
         #expect(vm.project.frames[1].durationMs == 150)
     }
+
+    @Test func autosaveURLIsConstant() {
+        let url = FrameViewModel.autosaveURL
+        #expect(url.lastPathComponent == "PlanktonSprite_autosave.plankton")
+    }
+
+    @Test func autosavePreservesCurrentFileURL() {
+        let vm = FrameViewModel()
+        let fakeURL = URL(fileURLWithPath: "/tmp/test.plankton")
+        vm.currentFileURL = fakeURL
+        vm.autosave()
+        #expect(vm.currentFileURL == fakeURL)
+    }
+
+    @Test func autosaveWithNilURLKeepsNil() {
+        let vm = FrameViewModel()
+        vm.currentFileURL = nil
+        vm.autosave()
+        #expect(vm.currentFileURL == nil)
+    }
 }
 
 // MARK: - ExportError Tests
@@ -1233,6 +1253,19 @@ struct ExportViewModelTests {
         #expect(vm.spritesheetLayout == .horizontal)
         #expect(vm.enginePreset == .generic)
         #expect(vm.spritesheetPadding == 0)
+        #expect(vm.exportProgress == 0)
+        #expect(vm.exportStatus == "")
+    }
+
+    @Test func cleanupResetsProgress() {
+        let vm = ExportViewModel()
+        vm.exportProgress = 0.5
+        vm.exportStatus = "Working…"
+        vm.cleanup()
+        #expect(vm.exportProgress == 0)
+        #expect(vm.exportStatus == "")
+        #expect(vm.exportedFileURL == nil)
+        #expect(vm.additionalExportURLs.isEmpty)
     }
 
     @Test func spritesheetLayoutCases() {

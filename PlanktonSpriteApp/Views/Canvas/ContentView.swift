@@ -300,13 +300,39 @@ struct ContentView: View {
                         .controlSize(.mini)
 
                         // Engine Preset
-                        Picker("Preset", selection: $exportVM.enginePreset) {
+                        Text("Engine Preset")
+                            .font(.system(size: 9, weight: .bold, design: .monospaced))
+                            .foregroundStyle(.tertiary)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+
+                        LazyVGrid(
+                            columns: [GridItem(.flexible()), GridItem(.flexible())],
+                            spacing: 4
+                        ) {
                             ForEach(ExportViewModel.EnginePreset.allCases) { preset in
-                                Text(preset.rawValue).tag(preset)
+                                Button {
+                                    exportVM.enginePreset = preset
+                                } label: {
+                                    Text(preset.rawValue)
+                                        .font(.system(size: 10, weight: .semibold))
+                                        .frame(maxWidth: .infinity)
+                                }
+                                .buttonStyle(.bordered)
+                                .controlSize(.mini)
+                                .tint(exportVM.enginePreset == preset ? .pink : nil)
                             }
                         }
-                        .pickerStyle(.menu)
-                        .controlSize(.small)
+
+                        // Export-Fortschritt
+                        if exportVM.isExporting {
+                            VStack(spacing: 4) {
+                                ProgressView(value: exportVM.exportProgress)
+                                    .progressViewStyle(.linear)
+                                Text(exportVM.exportStatus)
+                                    .font(.system(size: 9, design: .monospaced))
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
 
                         // Export-Buttons
                         HStack(spacing: 8) {
