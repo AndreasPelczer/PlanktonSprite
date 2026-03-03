@@ -257,9 +257,14 @@ struct ContentView: View {
                         Divider()
 
                         // MARK: - Onion Skin
-                        if canvasVM.onionSkinEnabled {
-                            sectionHeader("ONION SKIN", count: nil, fps: nil)
+                        sectionHeader("ONION SKIN", count: nil, fps: nil)
 
+                        Toggle("Onion Skin", isOn: $canvasVM.onionSkinEnabled)
+                            .font(.system(size: 10, weight: .medium))
+                            .toggleStyle(.switch)
+                            .controlSize(.mini)
+
+                        if canvasVM.onionSkinEnabled {
                             Toggle("Vorheriger Frame", isOn: $canvasVM.onionSkinPrevious)
                                 .font(.system(size: 10))
                                 .toggleStyle(.switch)
@@ -277,9 +282,9 @@ struct ContentView: View {
                                 Slider(value: $canvasVM.onionSkinOpacity, in: 0.05...0.8)
                                     .controlSize(.small)
                             }
-
-                            Divider()
                         }
+
+                        Divider()
 
                         // MARK: - Export
                         sectionHeader("EXPORT", count: nil, fps: nil)
