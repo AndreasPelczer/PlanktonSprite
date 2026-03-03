@@ -11,28 +11,44 @@ import UniformTypeIdentifiers
 import AppKit
 #endif
 
-/// Das 32×32 Pixel-Raster zum Zeichnen.
+/// Das Pixel-Raster zum Zeichnen.
 /// Reagiert auf Mausklicks und Drag-Bewegungen.
+/// Unterstützt Zoom, Onion Skin und variable Grid-Größen.
 struct PixelCanvasView: View {
-    
+
     @EnvironmentObject var canvasVM: CanvasViewModel
     @EnvironmentObject var frameVM: FrameViewModel
-    
+
     // MARK: - Lokaler State
-    
+
     /// Welcher Pixel wird gerade überfahren? Für Hover-Highlight.
     @State private var hoveredPixel: (x: Int, y: Int)?
-    
+
     /// Sind wir gerade am Zeichnen (Maustaste gedrückt)?
     @State private var isDrawing: Bool = false
-    
-    // MARK: - Konstanten
-    
-    private let gridSize: Int = 32
-    
-    /// Größe eines einzelnen Pixels in Punkten
-    private let cellSize: CGFloat = 14
-    
+
+    // MARK: - Dynamische Größen
+
+    /// Grid-Größe aus dem Projekt
+    private var gridSize: Int {
+        frameVM.project.gridSize
+    }
+
+    /// Basis-Pixel-Größe abhängig von Grid-Größe (kleineres Grid = größere Pixel)
+    private var baseCellSize: CGFloat {
+        switch gridSize {
+        case 1...16: return 20
+        case 17...32: return 14
+        case 33...64: return 7
+        default: return max(4, 448.0 / CGFloat(gridSize))
+        }
+    }
+
+    /// Effektive Pixel-Größe mit Zoom
+    private var cellSize: CGFloat {
+        baseCellSize * canvasVM.zoomScale
+    }
+
     /// Gesamtgröße des Canvas
     private var canvasSize: CGFloat {
         CGFloat(gridSize) * cellSize
@@ -47,25 +63,46 @@ struct PixelCanvasView: View {
         }
         let showGrid = canvasVM.showGrid
         let hover = hoveredPixel
-        let isPenTool = canvasVM.currentTool == .pen
+        let isPenTool = canvasVM.currentTool == .pen || canvasVM.currentTool == .line || canvasVM.currentTool == .rectangle
         let currentColor = canvasVM.currentColor
-        
+        let gs = gridSize
+        let cs = cellSize
+        let cvs = canvasSize
+
+        // Onion Skin Accessors
+        let onionEnabled = canvasVM.onionSkinEnabled
+        let onionOpacity = canvasVM.onionSkinOpacity
+        let onionPrev = canvasVM.onionSkinPrevious
+        let onionNext = canvasVM.onionSkinNext
+        let prevCanvas: PixelCanvas? = onionEnabled && onionPrev ? frameVM.project.frame(at: frameVM.activeFrameIndex - 1)?.canvas : nil
+        let nextCanvas: PixelCanvas? = onionEnabled && onionNext ? frameVM.project.frame(at: frameVM.activeFrameIndex + 1)?.canvas : nil
+
         Canvas { context, _ in
-            
+
             // 1. Schachbrett-Hintergrund (zeigt Transparenz)
-            drawCheckerboard(context: context)
-            
-            // 2. Pixel zeichnen
-            drawPixels(context: context, accessor: gridAccessor)
-            
-            // 3. Rasterlinien
-            if showGrid {
-                drawGridLines(context: context)
+            drawCheckerboard(context: context, gridSize: gs, cellSize: cs)
+
+            // 2. Onion Skin: vorheriges Frame
+            if let prev = prevCanvas {
+                drawOnionSkin(context: context, canvas: prev, gridSize: gs, cellSize: cs, opacity: onionOpacity, tint: Color.red)
             }
-            
-            // 4. Hover-Highlight
+
+            // 3. Onion Skin: nächstes Frame
+            if let next = nextCanvas {
+                drawOnionSkin(context: context, canvas: next, gridSize: gs, cellSize: cs, opacity: onionOpacity, tint: Color.blue)
+            }
+
+            // 4. Pixel zeichnen
+            drawPixels(context: context, gridSize: gs, cellSize: cs, accessor: gridAccessor)
+
+            // 5. Rasterlinien
+            if showGrid {
+                drawGridLines(context: context, gridSize: gs, cellSize: cs, canvasSize: cvs)
+            }
+
+            // 6. Hover-Highlight
             if let hover = hover {
-                drawHoverIndicator(context: context, x: hover.x, y: hover.y, isPen: isPenTool, color: currentColor)
+                drawHoverIndicator(context: context, x: hover.x, y: hover.y, isPen: isPenTool, color: currentColor, cellSize: cs)
             }
         }
         .frame(width: canvasSize, height: canvasSize)
@@ -111,17 +148,17 @@ struct PixelCanvasView: View {
             .onChanged { value in
                 let (x, y) = pixelCoordinate(from: value.location)
                 guard frameVM.activeCanvas.isValid(x: x, y: y) else { return }
-                
+
                 if !isDrawing {
-                    // Erster Kontakt – Strich beginnen
                     isDrawing = true
                     canvasVM.beginStroke(at: x, y: y)
                 } else {
-                    // Weitermalen
                     canvasVM.continueStroke(at: x, y: y)
                 }
             }
-            .onEnded { _ in
+            .onEnded { value in
+                let (x, y) = pixelCoordinate(from: value.location)
+                canvasVM.endStroke(at: x, y: y)
                 isDrawing = false
             }
     }
@@ -140,13 +177,12 @@ struct PixelCanvasView: View {
     }
     
     // MARK: - Canvas-Zeichenfunktionen
-    
+
     /// Schachbrett – der klassische Transparenz-Indikator.
-    /// Hell/Dunkel-Kästchen wie in Photoshop.
-    private func drawCheckerboard(context: GraphicsContext) {
+    private func drawCheckerboard(context: GraphicsContext, gridSize: Int, cellSize: CGFloat) {
         let lightColor = Color(red: 0.18, green: 0.18, blue: 0.22)
         let darkColor = Color(red: 0.15, green: 0.15, blue: 0.20)
-        
+
         for y in 0..<gridSize {
             for x in 0..<gridSize {
                 let color = (x + y) % 2 == 0 ? lightColor : darkColor
@@ -160,9 +196,9 @@ struct PixelCanvasView: View {
             }
         }
     }
-    
+
     /// Malt alle gesetzten Pixel auf das Canvas.
-    private func drawPixels(context: GraphicsContext, accessor: (Int, Int) -> Color?) {
+    private func drawPixels(context: GraphicsContext, gridSize: Int, cellSize: CGFloat, accessor: (Int, Int) -> Color?) {
         for y in 0..<gridSize {
             for x in 0..<gridSize {
                 if let color = accessor(x, y) {
@@ -177,46 +213,58 @@ struct PixelCanvasView: View {
             }
         }
     }
-    
+
+    /// Zeichnet Onion Skin Overlay eines anderen Frames.
+    private func drawOnionSkin(context: GraphicsContext, canvas: PixelCanvas, gridSize: Int, cellSize: CGFloat, opacity: Double, tint: Color) {
+        for y in 0..<gridSize {
+            for x in 0..<gridSize {
+                if let color = canvas.pixel(at: x, y: y) {
+                    let rect = CGRect(
+                        x: CGFloat(x) * cellSize,
+                        y: CGFloat(y) * cellSize,
+                        width: cellSize,
+                        height: cellSize
+                    )
+                    context.fill(Path(rect), with: .color(color.opacity(opacity)))
+                }
+            }
+        }
+    }
+
     /// Zeichnet die Rasterlinien – dünn und dezent.
-    private func drawGridLines(context: GraphicsContext) {
+    private func drawGridLines(context: GraphicsContext, gridSize: Int, cellSize: CGFloat, canvasSize: CGFloat) {
         let lineColor = Color.white.opacity(0.08)
-        
+
         for i in 0...gridSize {
             let pos = CGFloat(i) * cellSize
-            
-            // Vertikale Linie
+
             var vPath = Path()
             vPath.move(to: CGPoint(x: pos, y: 0))
             vPath.addLine(to: CGPoint(x: pos, y: canvasSize))
             context.stroke(vPath, with: .color(lineColor), lineWidth: 0.5)
-            
-            // Horizontale Linie
+
             var hPath = Path()
             hPath.move(to: CGPoint(x: 0, y: pos))
             hPath.addLine(to: CGPoint(x: canvasSize, y: pos))
             context.stroke(hPath, with: .color(lineColor), lineWidth: 0.5)
         }
     }
-    
+
     /// Zeigt an, über welchem Pixel die Maus schwebt.
-    /// Subtiler Rahmen – nicht aufdringlich, aber hilfreich.
-    private func drawHoverIndicator(context: GraphicsContext, x: Int, y: Int, isPen: Bool, color: Color) {
+    private func drawHoverIndicator(context: GraphicsContext, x: Int, y: Int, isPen: Bool, color: Color, cellSize: CGFloat) {
         let rect = CGRect(
             x: CGFloat(x) * cellSize,
             y: CGFloat(y) * cellSize,
             width: cellSize,
             height: cellSize
         )
-        
-        // Heller Rahmen um den Pixel
+
         context.stroke(
             Path(rect),
             with: .color(.white.opacity(0.5)),
             lineWidth: 1.5
         )
-        
-        // Leichte Füllung als Vorschau der gewählten Farbe
+
         if isPen {
             context.fill(
                 Path(rect),

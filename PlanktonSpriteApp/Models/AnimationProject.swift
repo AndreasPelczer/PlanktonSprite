@@ -11,29 +11,37 @@ import SwiftUI
 /// Das komplette Animationsprojekt.
 /// Hält alle Frames und die globalen Einstellungen.
 struct AnimationProject {
-    
+
     // MARK: - Frames
-    
+
     /// Alle Frames der Animation, in Reihenfolge.
     /// Mindestens ein Frame ist immer vorhanden.
     var frames: [SpriteFrame]
-    
+
     // MARK: - Einstellungen
-    
+
     /// Abspielgeschwindigkeit in Frames pro Sekunde.
     /// Bereich: 1–24, Standard: 6
     var fps: Int
-    
+
     /// Name des Projekts – für Dateiexport und Anzeige
     var name: String
-    
+
+    /// Rastergröße des Projekts
+    var gridSize: Int
+
+    /// Loop-Modus: Animation wiederholen oder einmal abspielen
+    var loopAnimation: Bool
+
     // MARK: - Init
-    
+
     /// Erzeugt ein neues Projekt mit einem leeren Frame
-    init(name: String = "Daumenkino") {
+    init(name: String = "Daumenkino", gridSize: Int = PixelCanvas.defaultGridSize) {
         self.name = name
         self.fps = 6
-        self.frames = [SpriteFrame()]
+        self.gridSize = gridSize
+        self.loopAnimation = true
+        self.frames = [SpriteFrame(gridSize: gridSize)]
     }
     
     // MARK: - Frame-Zugriff
@@ -57,7 +65,7 @@ struct AnimationProject {
     @discardableResult
     mutating func insertFrame(after index: Int) -> Int {
         let insertIndex = min(index + 1, frames.count)
-        frames.insert(SpriteFrame(), at: insertIndex)
+        frames.insert(SpriteFrame(gridSize: gridSize), at: insertIndex)
         return insertIndex
     }
     
@@ -67,7 +75,7 @@ struct AnimationProject {
     @discardableResult
     mutating func duplicateFrame(at index: Int) -> Int? {
         guard isValidIndex(index) else { return nil }
-        let copy = SpriteFrame(canvas: frames[index].canvas)
+        let copy = SpriteFrame(canvas: frames[index].canvas, durationMs: frames[index].durationMs)
         let insertIndex = index + 1
         frames.insert(copy, at: insertIndex)
         return insertIndex

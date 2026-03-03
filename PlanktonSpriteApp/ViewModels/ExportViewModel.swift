@@ -22,28 +22,64 @@ import UIKit
 /// Stellt die Daten bereit, die der ShareSheet braucht.
 class ExportViewModel: ObservableObject {
 
+    // MARK: - Spritesheet Layout
+
+    /// Layout-Optionen für Spritesheet-Export
+    enum SpritesheetLayout: String, CaseIterable, Identifiable {
+        case horizontal = "Horizontal"
+        case vertical = "Vertikal"
+        case grid = "Grid"
+
+        var id: String { rawValue }
+    }
+
+    /// Engine-Presets für JSON-Meta-Export
+    enum EnginePreset: String, CaseIterable, Identifiable {
+        case generic = "Generic"
+        case unity = "Unity"
+        case godot = "Godot"
+        case spriteKit = "SpriteKit"
+
+        var id: String { rawValue }
+    }
+
     // MARK: - Published State
-    
+
     /// Ist gerade ein Export am Laufen?
     @Published var isExporting: Bool = false
-    
+
     /// Soll das Share Sheet angezeigt werden?
     @Published var showShareSheet: Bool = false
-    
+
     /// Die exportierte Datei als URL – wird dem ShareSheet übergeben
     @Published var exportedFileURL: URL?
-    
+
+    /// Zusätzliche exportierte Dateien (z.B. JSON neben PNG)
+    @Published var additionalExportURLs: [URL] = []
+
     /// Fehlermeldung falls der Export schiefgeht
     @Published var errorMessage: String?
-    
+
+    /// GIF mit transparentem Hintergrund exportieren
+    @Published var transparentBackground: Bool = false
+
+    /// Gewähltes Spritesheet-Layout
+    @Published var spritesheetLayout: SpritesheetLayout = .horizontal
+
+    /// Gewähltes Engine-Preset
+    @Published var enginePreset: EnginePreset = .generic
+
+    /// Custom Padding zwischen Frames im Spritesheet
+    @Published var spritesheetPadding: Int = 0
+
     // MARK: - Referenz
-    
+
     private weak var frameViewModel: FrameViewModel?
-    
+
     // MARK: - Init
-    
+
     init() {}
-    
+
     func connect(to frameViewModel: FrameViewModel) {
         self.frameViewModel = frameViewModel
     }
@@ -51,22 +87,19 @@ class ExportViewModel: ObservableObject {
     // MARK: - GIF Export
     
     /// Erzeugt ein animiertes GIF aus allen Frames.
-    /// Der Ablauf:
-    /// 1. Jeden Frame in ein CGImage wandeln
-    /// 2. Alle CGImages in eine GIF-Datei schreiben
-    /// 3. URL ans ShareSheet übergeben
     func exportGIF() {
         guard let frameVM = frameViewModel else { return }
 
         isExporting = true
         errorMessage = nil
 
-        // Capture frame data on main thread to avoid race condition
         let frames = frameVM.frames
         let fps = frameVM.project.fps
         let name = frameVM.project.name
+        let gridSize = frameVM.project.gridSize
+        let loop = frameVM.project.loopAnimation
+        let transparentBG = transparentBackground
 
-        // Auf Background-Thread, damit die UI nicht einfriert
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
             guard let self = self else { return }
 
@@ -74,9 +107,12 @@ class ExportViewModel: ObservableObject {
                 let url = try self.createGIF(
                     frames: frames,
                     fps: fps,
-                    name: name
+                    name: name,
+                    gridSize: gridSize,
+                    loop: loop,
+                    transparentBackground: transparentBG
                 )
-                
+
                 DispatchQueue.main.async {
                     self.exportedFileURL = url
                     self.showShareSheet = true
@@ -90,16 +126,12 @@ class ExportViewModel: ObservableObject {
             }
         }
     }
-    
+
     /// Baut die GIF-Datei zusammen.
-    /// Verwendet ImageIO – Apples Low-Level Framework für Bildformate.
-    private func createGIF(frames: [SpriteFrame], fps: Int, name: String) throws -> URL {
-        // Temporäre Datei im Cache-Verzeichnis
+    private func createGIF(frames: [SpriteFrame], fps: Int, name: String, gridSize: Int, loop: Bool, transparentBackground: Bool) throws -> URL {
         let fileName = "\(name)_animation.gif"
         let fileURL = FileManager.default.temporaryDirectory.appendingPathComponent(fileName)
-        
-        // GIF Destination erstellen
-        // kUTTypeGIF sagt ImageIO: "Ich will eine GIF-Datei"
+
         guard let destination = CGImageDestinationCreateWithURL(
             fileURL as CFURL,
             UTType.gif.identifier as CFString,
@@ -108,67 +140,77 @@ class ExportViewModel: ObservableObject {
         ) else {
             throw ExportError.destinationCreationFailed
         }
-        
-        // Globale GIF-Eigenschaften: Endlosschleife
+
+        // Loop: 0 = unendlich, 1 = einmal
         let gifProperties: [String: Any] = [
             kCGImagePropertyGIFDictionary as String: [
-                kCGImagePropertyGIFLoopCount as String: 0  // 0 = unendlich
+                kCGImagePropertyGIFLoopCount as String: loop ? 0 : 1
             ]
         ]
         CGImageDestinationSetProperties(destination, gifProperties as CFDictionary)
-        
-        // Frame-Verzögerung aus FPS berechnen
-        let delay = 1.0 / Double(fps)
-        
-        // Jeden Frame als Bild hinzufügen
+
+        let defaultDelay = 1.0 / Double(fps)
+
         for frame in frames {
-            guard let cgImage = renderFrameToCGImage(frame.canvas) else {
+            guard let cgImage = renderFrameToCGImage(frame.canvas, gridSize: gridSize, transparentBackground: transparentBackground) else {
                 throw ExportError.frameRenderFailed
             }
-            
-            // Pro-Frame Eigenschaften: wie lange wird dieser Frame angezeigt
+
+            // Per-Frame Duration: wenn gesetzt, in Sekunden umrechnen
+            let delay = frame.durationMs.map { Double($0) / 1000.0 } ?? defaultDelay
+
             let frameProperties: [String: Any] = [
                 kCGImagePropertyGIFDictionary as String: [
                     kCGImagePropertyGIFDelayTime as String: delay
                 ]
             ]
-            
+
             CGImageDestinationAddImage(destination, cgImage, frameProperties as CFDictionary)
         }
-        
-        // Datei finalisieren und schreiben
+
         guard CGImageDestinationFinalize(destination) else {
             throw ExportError.finalizationFailed
         }
-        
+
         return fileURL
     }
     
     // MARK: - Spritesheet Export
     
-    /// Erzeugt ein PNG-Spritesheet: alle Frames nebeneinander in einer Reihe.
-    /// Perfekt für SpriteKit, Unity, oder jede andere Game Engine.
+    /// Erzeugt ein PNG-Spritesheet mit optionalem JSON-Meta.
     func exportSpritesheet() {
         guard let frameVM = frameViewModel else { return }
 
         isExporting = true
         errorMessage = nil
 
-        // Capture frame data on main thread to avoid race condition
         let frames = frameVM.frames
         let name = frameVM.project.name
+        let gridSize = frameVM.project.gridSize
+        let fps = frameVM.project.fps
+        let layout = spritesheetLayout
+        let padding = spritesheetPadding
+        let preset = enginePreset
 
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
             guard let self = self else { return }
 
             do {
-                let url = try self.createSpritesheet(
+                let (pngURL, jsonURL) = try self.createSpritesheet(
                     frames: frames,
-                    name: name
+                    name: name,
+                    gridSize: gridSize,
+                    fps: fps,
+                    layout: layout,
+                    padding: padding,
+                    preset: preset
                 )
-                
+
                 DispatchQueue.main.async {
-                    self.exportedFileURL = url
+                    self.exportedFileURL = pngURL
+                    if let jsonURL = jsonURL {
+                        self.additionalExportURLs = [jsonURL]
+                    }
                     self.showShareSheet = true
                     self.isExporting = false
                 }
@@ -180,71 +222,192 @@ class ExportViewModel: ObservableObject {
             }
         }
     }
-    
-    /// Baut das Spritesheet: ein breites Bild mit allen Frames nebeneinander.
-    private func createSpritesheet(frames: [SpriteFrame], name: String) throws -> URL {
-        let size = PixelCanvas.gridSize
-        let totalWidth = size * frames.count
-        
-        // Bitmap-Kontext erstellen: RGBA, 8 Bit pro Kanal
+
+    /// Berechnet Spritesheet-Dimensionen basierend auf Layout
+    private func spritesheetDimensions(frameCount: Int, gridSize: Int, padding: Int, layout: SpritesheetLayout) -> (width: Int, height: Int, columns: Int, rows: Int) {
+        let cell = gridSize + padding
+        switch layout {
+        case .horizontal:
+            return (cell * frameCount - padding, gridSize, frameCount, 1)
+        case .vertical:
+            return (gridSize, cell * frameCount - padding, 1, frameCount)
+        case .grid:
+            let cols = Int(ceil(sqrt(Double(frameCount))))
+            let rows = Int(ceil(Double(frameCount) / Double(cols)))
+            return (cell * cols - padding, cell * rows - padding, cols, rows)
+        }
+    }
+
+    /// Baut das Spritesheet mit konfigurierbarem Layout.
+    private func createSpritesheet(frames: [SpriteFrame], name: String, gridSize: Int, fps: Int, layout: SpritesheetLayout, padding: Int, preset: EnginePreset) throws -> (URL, URL?) {
+        let dims = spritesheetDimensions(frameCount: frames.count, gridSize: gridSize, padding: padding, layout: layout)
+
         guard let context = CGContext(
             data: nil,
-            width: totalWidth,
-            height: size,
+            width: dims.width,
+            height: dims.height,
             bitsPerComponent: 8,
-            bytesPerRow: totalWidth * 4,
+            bytesPerRow: dims.width * 4,
             space: CGColorSpaceCreateDeviceRGB(),
             bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
         ) else {
             throw ExportError.contextCreationFailed
         }
-        
-        // Hintergrund transparent lassen (ist default bei CGContext)
-        
-        // Jeden Frame an seine Position malen
+
+        let cell = gridSize + padding
+
         for (index, frame) in frames.enumerated() {
-            let offsetX = index * size
-            
-            for y in 0..<size {
-                for x in 0..<size {
+            let col: Int
+            let row: Int
+            switch layout {
+            case .horizontal:
+                col = index; row = 0
+            case .vertical:
+                col = 0; row = index
+            case .grid:
+                col = index % dims.columns; row = index / dims.columns
+            }
+
+            let offsetX = col * cell
+            let offsetY = row * cell
+
+            for y in 0..<gridSize {
+                for x in 0..<gridSize {
                     if let color = frame.canvas.pixel(at: x, y: y),
                        let components = color.cgColorComponents {
                         context.setFillColor(red: components.r,
                                              green: components.g,
                                              blue: components.b,
                                              alpha: components.a)
-                        // CGContext hat y=0 unten, wir wollen y=0 oben
-                        context.fill(CGRect(x: offsetX + x, y: size - 1 - y, width: 1, height: 1))
+                        context.fill(CGRect(x: offsetX + x, y: dims.height - 1 - (offsetY + y), width: 1, height: 1))
                     }
                 }
             }
         }
-        
+
         guard let cgImage = context.makeImage() else {
             throw ExportError.imageCreationFailed
         }
-        
-        // Als PNG speichern
-        let fileName = "\(name)_spritesheet.png"
-        let fileURL = FileManager.default.temporaryDirectory.appendingPathComponent(fileName)
-        
+
+        let pngFileName = "\(name)_spritesheet.png"
+        let pngURL = FileManager.default.temporaryDirectory.appendingPathComponent(pngFileName)
+
         guard let pngData = cgImageToPNGData(cgImage) else {
             throw ExportError.pngEncodingFailed
         }
-        
-        try pngData.write(to: fileURL)
-        
-        return fileURL
+        try pngData.write(to: pngURL)
+
+        // JSON Meta-Daten generieren
+        let jsonURL = try createSpritesheetMeta(
+            name: name,
+            frames: frames,
+            gridSize: gridSize,
+            fps: fps,
+            layout: layout,
+            padding: padding,
+            dims: dims,
+            preset: preset,
+            pngFileName: pngFileName
+        )
+
+        return (pngURL, jsonURL)
+    }
+
+    /// Erzeugt JSON-Meta-Daten für das Spritesheet, angepasst an Engine-Preset.
+    private func createSpritesheetMeta(name: String, frames: [SpriteFrame], gridSize: Int, fps: Int, layout: SpritesheetLayout, padding: Int, dims: (width: Int, height: Int, columns: Int, rows: Int), preset: EnginePreset, pngFileName: String) throws -> URL {
+        let cell = gridSize + padding
+
+        var frameEntries: [[String: Any]] = []
+        for (index, frame) in frames.enumerated() {
+            let col: Int
+            let row: Int
+            switch layout {
+            case .horizontal: col = index; row = 0
+            case .vertical: col = 0; row = index
+            case .grid: col = index % dims.columns; row = index / dims.columns
+            }
+
+            let duration = frame.durationMs ?? Int(1000.0 / Double(fps))
+
+            var entry: [String: Any] = [
+                "index": index,
+                "x": col * cell,
+                "y": row * cell,
+                "width": gridSize,
+                "height": gridSize,
+                "duration_ms": duration
+            ]
+
+            switch preset {
+            case .unity:
+                entry["pivot"] = ["x": 0.5, "y": 0.5]
+                entry["border"] = ["x": 0, "y": 0, "z": 0, "w": 0]
+            case .godot:
+                entry["region"] = [
+                    "x": col * cell,
+                    "y": row * cell,
+                    "w": gridSize,
+                    "h": gridSize
+                ]
+            case .spriteKit:
+                // SpriteKit verwendet textureRect in normalisierten Koordinaten
+                entry["textureRect"] = [
+                    "x": Double(col * cell) / Double(dims.width),
+                    "y": Double(row * cell) / Double(dims.height),
+                    "width": Double(gridSize) / Double(dims.width),
+                    "height": Double(gridSize) / Double(dims.height)
+                ]
+            case .generic:
+                break
+            }
+
+            frameEntries.append(entry)
+        }
+
+        var meta: [String: Any] = [
+            "image": pngFileName,
+            "format": "RGBA8888",
+            "size": ["w": dims.width, "h": dims.height],
+            "frameSize": ["w": gridSize, "h": gridSize],
+            "frameCount": frames.count,
+            "fps": fps,
+            "layout": layout.rawValue.lowercased(),
+            "columns": dims.columns,
+            "rows": dims.rows,
+            "padding": padding,
+            "preset": preset.rawValue,
+            "frames": frameEntries
+        ]
+
+        switch preset {
+        case .unity:
+            meta["pixelsPerUnit"] = 16
+            meta["filterMode"] = "Point"
+            meta["wrapMode"] = "Clamp"
+        case .godot:
+            meta["resource_type"] = "AtlasTexture"
+            meta["flags"] = 0
+        case .spriteKit:
+            meta["textureAtlas"] = name
+        case .generic:
+            break
+        }
+
+        let jsonData = try JSONSerialization.data(withJSONObject: meta, options: [.prettyPrinted, .sortedKeys])
+        let jsonFileName = "\(name)_spritesheet.json"
+        let jsonURL = FileManager.default.temporaryDirectory.appendingPathComponent(jsonFileName)
+        try jsonData.write(to: jsonURL)
+
+        return jsonURL
     }
     
     // MARK: - Frame zu CGImage rendern
     
     /// Wandelt ein PixelCanvas in ein CGImage um.
     /// Jeder Pixel wird 1:1 übertragen – keine Skalierung.
-    /// Das ergibt ein 32×32 Pixel Bild.
-    private func renderFrameToCGImage(_ canvas: PixelCanvas) -> CGImage? {
-        let size = PixelCanvas.gridSize
-        
+    private func renderFrameToCGImage(_ canvas: PixelCanvas, gridSize: Int, transparentBackground: Bool = false) -> CGImage? {
+        let size = gridSize
+
         guard let context = CGContext(
             data: nil,
             width: size,
@@ -256,7 +419,13 @@ class ExportViewModel: ObservableObject {
         ) else {
             return nil
         }
-        
+
+        // Weißer Hintergrund wenn nicht transparent
+        if !transparentBackground {
+            context.setFillColor(red: 1, green: 1, blue: 1, alpha: 1)
+            context.fill(CGRect(x: 0, y: 0, width: size, height: size))
+        }
+
         for y in 0..<size {
             for x in 0..<size {
                 if let color = canvas.pixel(at: x, y: y),
@@ -269,7 +438,7 @@ class ExportViewModel: ObservableObject {
                 }
             }
         }
-        
+
         return context.makeImage()
     }
     

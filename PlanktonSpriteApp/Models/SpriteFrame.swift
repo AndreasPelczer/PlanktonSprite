@@ -20,24 +20,30 @@ struct SpriteFrame: Identifiable {
     let id: UUID
     
     // MARK: - Daten
-    
+
     /// Das Pixel-Raster dieses Frames
     var canvas: PixelCanvas
-    
+
+    /// Per-Frame Anzeigedauer in Millisekunden.
+    /// nil = globale FPS verwenden.
+    var durationMs: Int?
+
     // MARK: - Init
-    
-    /// Erzeugt einen neuen leeren Frame
-    init() {
+
+    /// Erzeugt einen neuen leeren Frame mit optionaler Grid-Größe
+    init(gridSize: Int = PixelCanvas.defaultGridSize) {
         self.id = UUID()
-        self.canvas = PixelCanvas()
+        self.canvas = PixelCanvas(gridSize: gridSize)
+        self.durationMs = nil
     }
-    
+
     /// Erzeugt einen Frame mit bestehendem Canvas.
     /// Nützlich beim Duplizieren: du kopierst das Canvas,
     /// aber der Frame bekommt eine NEUE id.
-    init(canvas: PixelCanvas) {
+    init(canvas: PixelCanvas, durationMs: Int? = nil) {
         self.id = UUID()
         self.canvas = canvas
+        self.durationMs = durationMs
     }
 }
 import UniformTypeIdentifiers
