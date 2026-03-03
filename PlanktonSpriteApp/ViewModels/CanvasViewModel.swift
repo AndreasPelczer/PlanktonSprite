@@ -172,6 +172,8 @@ class CanvasViewModel: ObservableObject {
         }
         shapeStartPoint = nil
         preShapeCanvas = nil
+        // Debounced Autosave nach Zeichenende
+        frameViewModel?.scheduleStrokeAutosave()
     }
 
     /// Wendet das aktuelle Werkzeug auf die Koordinate an.

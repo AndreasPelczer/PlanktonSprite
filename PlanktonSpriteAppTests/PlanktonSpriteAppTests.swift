@@ -1207,9 +1207,16 @@ struct FrameViewModelExtendedTests {
         #expect(vm.project.frames[1].durationMs == 150)
     }
 
-    @Test func autosaveURLIsConstant() {
-        let url = FrameViewModel.autosaveURL
-        #expect(url.lastPathComponent == "PlanktonSprite_autosave.plankton")
+    @Test func autosaveURLPointsToApplicationSupport() {
+        let url = FrameViewModel.autosaveLatestURL
+        #expect(url.lastPathComponent == "autosave_latest.plankton")
+        #expect(url.pathComponents.contains("PlanktonSprite"))
+        #expect(url.pathComponents.contains("Autosave"))
+    }
+
+    @Test func autosavePreviousURLExists() {
+        let url = FrameViewModel.autosavePreviousURL
+        #expect(url.lastPathComponent == "autosave_previous.plankton")
     }
 
     @Test func autosavePreservesCurrentFileURL() {
@@ -1225,6 +1232,12 @@ struct FrameViewModelExtendedTests {
         vm.currentFileURL = nil
         vm.autosave()
         #expect(vm.currentFileURL == nil)
+    }
+
+    @Test func autosaveCreatesFile() {
+        let vm = FrameViewModel()
+        vm.autosave()
+        #expect(FileManager.default.fileExists(atPath: FrameViewModel.autosaveLatestURL.path))
     }
 }
 
