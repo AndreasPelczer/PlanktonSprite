@@ -65,7 +65,7 @@ struct ToolBarView: View {
 
             Text("\(Int(canvasVM.zoomScale * 100))%")
                 .font(.system(size: 9, weight: .bold, design: .monospaced))
-                .foregroundStyle(.secondary)
+                .foregroundStyle(Color(red: 0.0, green: 0.85, blue: 0.85).opacity(0.8))
                 .frame(width: 36)
 
             actionButton(icon: "plus.magnifyingglass", label: "Zoom +", enabled: canvasVM.zoomScale < canvasVM.maxZoom) {
@@ -105,24 +105,31 @@ struct ToolBarView: View {
     
     // MARK: - Subviews
     
-    /// Button für ein Werkzeug (Stift, Radierer, Füllen)
+    /// Button für ein Werkzeug (Stift, Radierer, Füllen, Linie, Rechteck)
     private func toolButton(_ tool: CanvasViewModel.Tool) -> some View {
-        Button {
-            canvasVM.currentTool = tool
+        let isActive = canvasVM.currentTool == tool
+        let teal = Color(red: 0.0, green: 0.85, blue: 0.85)
+
+        return Button {
+            withAnimation(.easeOut(duration: 0.12)) {
+                canvasVM.currentTool = tool
+            }
         } label: {
             Image(systemName: tool.iconName)
-                .font(.system(size: 13, weight: .medium))
-                .frame(width: 30, height: 26)
+                .font(.system(size: 13, weight: isActive ? .bold : .medium))
+                .foregroundStyle(isActive ? teal : .primary)
+                .frame(width: 32, height: 28)
                 .background(
-                    canvasVM.currentTool == tool
-                        ? Color.accentColor.opacity(0.2)
-                        : Color.clear
+                    RoundedRectangle(cornerRadius: 6)
+                        .fill(isActive ? teal.opacity(0.2) : Color.clear)
                 )
-                .clipShape(RoundedRectangle(cornerRadius: 5))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 6)
+                        .stroke(isActive ? teal.opacity(0.5) : Color.clear, lineWidth: 1)
+                )
         }
         .buttonStyle(.plain)
         .help(tool.rawValue)
-        // Tastatur-Shortcut: 1 = Stift, 2 = Radierer, 3 = Füllen
         .keyboardShortcut(shortcutKey(for: tool), modifiers: [])
     }
     

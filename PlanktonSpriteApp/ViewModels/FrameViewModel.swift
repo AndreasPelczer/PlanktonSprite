@@ -203,10 +203,26 @@ class FrameViewModel: ObservableObject {
     // MARK: - Autosave
 
     private var autosaveTimer: Timer?
+    private var strokeDebounceTimer: Timer?
 
-    /// Zentrale Autosave-URL – vermeidet Dopplung
-    static let autosaveURL = FileManager.default.temporaryDirectory
-        .appendingPathComponent("PlanktonSprite_autosave.plankton")
+    /// Autosave-Verzeichnis in Application Support (persistent, nicht löschbar durch OS)
+    static let autosaveDirectory: URL = {
+        let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
+        let dir = appSupport.appendingPathComponent("PlanktonSprite/Autosave", isDirectory: true)
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        return dir
+    }()
+
+    /// 2-Slot Rotation: latest + previous
+    static var autosaveLatestURL: URL {
+        autosaveDirectory.appendingPathComponent("autosave_latest.plankton")
+    }
+    static var autosavePreviousURL: URL {
+        autosaveDirectory.appendingPathComponent("autosave_previous.plankton")
+    }
+
+    /// Rückwärtskompatibilität: prüft auch den alten temporaryDirectory-Pfad
+    static let autosaveURL = autosaveLatestURL
 
     /// Startet den Autosave-Timer (alle 60 Sekunden)
     func startAutosave() {
@@ -220,29 +236,56 @@ class FrameViewModel: ObservableObject {
     func stopAutosave() {
         autosaveTimer?.invalidate()
         autosaveTimer = nil
+        strokeDebounceTimer?.invalidate()
+        strokeDebounceTimer = nil
     }
 
-    /// Autosave: speichert in den temporären Slot.
-    /// Bewahrt die echte currentFileURL – Autosave ist unsichtbar für den User.
+    /// Debounced Autosave nach Zeichenoperationen (1 Sekunde Verzögerung)
+    func scheduleStrokeAutosave() {
+        strokeDebounceTimer?.invalidate()
+        strokeDebounceTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: false) { [weak self] _ in
+            self?.autosave()
+        }
+    }
+
+    /// Autosave: 2-Slot Rotation in Application Support.
+    /// latest → previous, dann neuer Save → latest.
+    /// Bewahrt die echte currentFileURL.
     func autosave() {
         let savedURL = currentFileURL
         let file = ProjectFile(from: project)
         let encoder = JSONEncoder()
         encoder.outputFormatting = .prettyPrinted
         guard let data = try? encoder.encode(file) else { return }
-        try? data.write(to: Self.autosaveURL, options: .atomic)
+
+        let fm = FileManager.default
+        // Rotation: latest → previous (alte previous wird überschrieben)
+        if fm.fileExists(atPath: Self.autosaveLatestURL.path) {
+            try? fm.removeItem(at: Self.autosavePreviousURL)
+            try? fm.moveItem(at: Self.autosaveLatestURL, to: Self.autosavePreviousURL)
+        }
+        // Neuen Save schreiben
+        try? data.write(to: Self.autosaveLatestURL, options: .atomic)
+
         // currentFileURL nicht verändern – Autosave ist kein "echtes" Speichern
         currentFileURL = savedURL
     }
 
-    /// Prüft ob ein Autosave existiert
+    /// Prüft ob ein Autosave existiert (latest oder previous)
     var hasAutosave: Bool {
-        FileManager.default.fileExists(atPath: Self.autosaveURL.path)
+        let fm = FileManager.default
+        return fm.fileExists(atPath: Self.autosaveLatestURL.path)
+            || fm.fileExists(atPath: Self.autosavePreviousURL.path)
     }
 
-    /// Lädt den Autosave
+    /// Lädt den neuesten Autosave (latest, Fallback: previous)
     func loadAutosave() throws {
-        try loadProject(from: Self.autosaveURL)
+        let fm = FileManager.default
+        if fm.fileExists(atPath: Self.autosaveLatestURL.path) {
+            try loadProject(from: Self.autosaveLatestURL)
+        } else if fm.fileExists(atPath: Self.autosavePreviousURL.path) {
+            try loadProject(from: Self.autosavePreviousURL)
+        }
         currentFileURL = nil // Autosave hat keinen "echten" Pfad
     }
 

@@ -89,6 +89,17 @@ class ExportViewModel: ObservableObject {
     func connect(to frameViewModel: FrameViewModel) {
         self.frameViewModel = frameViewModel
     }
+
+    // MARK: - Unique Filename
+
+    /// Erzeugt einen kollisionsfreien Dateinamen mit Timestamp + UUID-Suffix
+    private func uniqueFileName(base: String, ext: String) -> String {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyy-MM-dd_HH-mm-ss"
+        let timestamp = formatter.string(from: Date())
+        let shortID = UUID().uuidString.prefix(4)
+        return "\(base)_\(timestamp)_\(shortID).\(ext)"
+    }
     
     // MARK: - GIF Export
     
@@ -101,11 +112,14 @@ class ExportViewModel: ObservableObject {
         exportProgress = 0
         exportStatus = "GIF wird erstellt…"
 
-        let frames = frameVM.frames
-        let fps = frameVM.project.fps
-        let name = frameVM.project.name
-        let gridSize = frameVM.project.gridSize
-        let loop = frameVM.project.loopAnimation
+        // Snapshot auf MainActor: alle Value-Types werden hier deep-copied.
+        // Ab hier arbeitet der Background-Thread nur mit dieser Kopie.
+        let snapshot = frameVM.project
+        let frames = snapshot.frames
+        let fps = snapshot.fps
+        let name = snapshot.name
+        let gridSize = snapshot.gridSize
+        let loop = snapshot.loopAnimation
         let transparentBG = transparentBackground
 
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
@@ -141,7 +155,7 @@ class ExportViewModel: ObservableObject {
 
     /// Baut die GIF-Datei zusammen.
     private func createGIF(frames: [SpriteFrame], fps: Int, name: String, gridSize: Int, loop: Bool, transparentBackground: Bool) throws -> URL {
-        let fileName = "\(name)_animation.gif"
+        let fileName = uniqueFileName(base: "\(name)_animation", ext: "gif")
         let fileURL = FileManager.default.temporaryDirectory.appendingPathComponent(fileName)
 
         guard let destination = CGImageDestinationCreateWithURL(
@@ -204,10 +218,12 @@ class ExportViewModel: ObservableObject {
         exportProgress = 0
         exportStatus = "Spritesheet wird erstellt…"
 
-        let frames = frameVM.frames
-        let name = frameVM.project.name
-        let gridSize = frameVM.project.gridSize
-        let fps = frameVM.project.fps
+        // Snapshot auf MainActor: deep copy aller Value-Types
+        let snapshot = frameVM.project
+        let frames = snapshot.frames
+        let name = snapshot.name
+        let gridSize = snapshot.gridSize
+        let fps = snapshot.fps
         let layout = spritesheetLayout
         let padding = spritesheetPadding
         let preset = enginePreset
@@ -313,7 +329,7 @@ class ExportViewModel: ObservableObject {
             throw ExportError.imageCreationFailed
         }
 
-        let pngFileName = "\(name)_spritesheet.png"
+        let pngFileName = uniqueFileName(base: "\(name)_spritesheet", ext: "png")
         let pngURL = FileManager.default.temporaryDirectory.appendingPathComponent(pngFileName)
 
         guard let pngData = cgImageToPNGData(cgImage) else {
@@ -420,7 +436,7 @@ class ExportViewModel: ObservableObject {
         }
 
         let jsonData = try JSONSerialization.data(withJSONObject: meta, options: [.prettyPrinted, .sortedKeys])
-        let jsonFileName = "\(name)_spritesheet.json"
+        let jsonFileName = uniqueFileName(base: "\(name)_spritesheet", ext: "json")
         let jsonURL = FileManager.default.temporaryDirectory.appendingPathComponent(jsonFileName)
         try jsonData.write(to: jsonURL, options: .atomic)
 
