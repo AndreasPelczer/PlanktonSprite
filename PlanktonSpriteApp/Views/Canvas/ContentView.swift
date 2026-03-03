@@ -11,6 +11,10 @@ import UniformTypeIdentifiers
 import UIKit
 #endif
 
+/// Einheitliche Akzentfarbe — Electric Teal.
+/// Eine dominante Farbe statt konkurrierender Pink/Blau/Grün.
+let accentTeal = Color(red: 0.0, green: 0.85, blue: 0.85)
+
 /// Root View der App.
 /// Oben: Frame-Leiste mit Neu/Kopieren/Löschen.
 /// Unten: Links Canvas mit Tools, Rechts Preview.
@@ -171,7 +175,7 @@ struct ContentView: View {
                 }
             }
             .padding(.horizontal, 16)
-            .padding(.vertical, 10)
+            .padding(.vertical, 14)
             .background(.background.opacity(0.5))
 
             // Trennlinie
@@ -213,7 +217,7 @@ struct ContentView: View {
                                 }
                                 .buttonStyle(.bordered)
                                 .controlSize(.mini)
-                                .tint(frameVM.project.gridSize == preset.rawValue ? .pink : nil)
+                                .tint(frameVM.project.gridSize == preset.rawValue ? accentTeal : nil)
                             }
                         }
 
@@ -286,82 +290,97 @@ struct ContentView: View {
 
                         Divider()
 
-                        // MARK: - Export
-                        sectionHeader("EXPORT", count: nil, fps: nil)
+                        // MARK: - Export (Card-Design)
+                        VStack(spacing: 10) {
+                            sectionHeader("EXPORT", count: nil, fps: nil)
 
-                        // Transparent BG
-                        Toggle("Transparenter Hintergrund", isOn: $exportVM.transparentBackground)
-                            .font(.system(size: 10))
-                            .toggleStyle(.switch)
+                            // Transparent BG
+                            Toggle("Transparenter Hintergrund", isOn: $exportVM.transparentBackground)
+                                .font(.system(size: 10))
+                                .toggleStyle(.switch)
+                                .controlSize(.mini)
+
+                            // Spritesheet Layout
+                            Picker("Layout", selection: $exportVM.spritesheetLayout) {
+                                ForEach(ExportViewModel.SpritesheetLayout.allCases) { layout in
+                                    Text(layout.rawValue).tag(layout)
+                                }
+                            }
+                            .pickerStyle(.segmented)
                             .controlSize(.mini)
 
-                        // Spritesheet Layout
-                        Picker("Layout", selection: $exportVM.spritesheetLayout) {
-                            ForEach(ExportViewModel.SpritesheetLayout.allCases) { layout in
-                                Text(layout.rawValue).tag(layout)
+                            // Engine Preset
+                            Text("Engine Preset")
+                                .font(.system(size: 9, weight: .bold, design: .monospaced))
+                                .foregroundStyle(.tertiary)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+
+                            LazyVGrid(
+                                columns: [GridItem(.flexible()), GridItem(.flexible())],
+                                spacing: 4
+                            ) {
+                                ForEach(ExportViewModel.EnginePreset.allCases) { preset in
+                                    Button {
+                                        exportVM.enginePreset = preset
+                                    } label: {
+                                        Text(preset.rawValue)
+                                            .font(.system(size: 10, weight: .semibold))
+                                            .frame(maxWidth: .infinity)
+                                    }
+                                    .buttonStyle(.bordered)
+                                    .controlSize(.mini)
+                                    .tint(exportVM.enginePreset == preset ? accentTeal : nil)
+                                }
                             }
-                        }
-                        .pickerStyle(.segmented)
-                        .controlSize(.mini)
 
-                        // Engine Preset
-                        Text("Engine Preset")
-                            .font(.system(size: 9, weight: .bold, design: .monospaced))
-                            .foregroundStyle(.tertiary)
-                            .frame(maxWidth: .infinity, alignment: .leading)
+                            // Export-Fortschritt
+                            if exportVM.isExporting {
+                                VStack(spacing: 4) {
+                                    ProgressView(value: exportVM.exportProgress)
+                                        .progressViewStyle(.linear)
+                                        .tint(accentTeal)
+                                    Text(exportVM.exportStatus)
+                                        .font(.system(size: 9, design: .monospaced))
+                                        .foregroundStyle(.secondary)
+                                }
+                            }
 
-                        LazyVGrid(
-                            columns: [GridItem(.flexible()), GridItem(.flexible())],
-                            spacing: 4
-                        ) {
-                            ForEach(ExportViewModel.EnginePreset.allCases) { preset in
+                            // Export-Buttons
+                            HStack(spacing: 8) {
                                 Button {
-                                    exportVM.enginePreset = preset
+                                    exportVM.exportGIF()
                                 } label: {
-                                    Text(preset.rawValue)
-                                        .font(.system(size: 10, weight: .semibold))
+                                    Label("GIF", systemImage: "square.and.arrow.up")
+                                        .font(.system(size: 12, weight: .bold))
                                         .frame(maxWidth: .infinity)
                                 }
-                                .buttonStyle(.bordered)
-                                .controlSize(.mini)
-                                .tint(exportVM.enginePreset == preset ? .pink : nil)
+                                .buttonStyle(.borderedProminent)
+                                .controlSize(.small)
+                                .tint(accentTeal)
+                                .disabled(exportVM.isExporting)
+
+                                Button {
+                                    exportVM.exportSpritesheet()
+                                } label: {
+                                    Label("PNG+JSON", systemImage: "rectangle.split.3x1")
+                                        .font(.system(size: 12, weight: .bold))
+                                        .frame(maxWidth: .infinity)
+                                }
+                                .buttonStyle(.borderedProminent)
+                                .controlSize(.small)
+                                .tint(accentTeal.opacity(0.7))
+                                .disabled(exportVM.isExporting)
                             }
                         }
-
-                        // Export-Fortschritt
-                        if exportVM.isExporting {
-                            VStack(spacing: 4) {
-                                ProgressView(value: exportVM.exportProgress)
-                                    .progressViewStyle(.linear)
-                                Text(exportVM.exportStatus)
-                                    .font(.system(size: 9, design: .monospaced))
-                                    .foregroundStyle(.secondary)
-                            }
-                        }
-
-                        // Export-Buttons
-                        HStack(spacing: 8) {
-                            Button {
-                                exportVM.exportGIF()
-                            } label: {
-                                Label("GIF", systemImage: "square.and.arrow.up")
-                                    .font(.system(size: 11, weight: .semibold))
-                            }
-                            .buttonStyle(.borderedProminent)
-                            .controlSize(.small)
-                            .tint(.pink)
-                            .disabled(exportVM.isExporting)
-
-                            Button {
-                                exportVM.exportSpritesheet()
-                            } label: {
-                                Label("PNG+JSON", systemImage: "rectangle.split.3x1")
-                                    .font(.system(size: 11, weight: .semibold))
-                            }
-                            .buttonStyle(.bordered)
-                            .controlSize(.small)
-                            .disabled(exportVM.isExporting)
-                        }
+                        .padding(10)
+                        .background(
+                            RoundedRectangle(cornerRadius: 10)
+                                .fill(Color.white.opacity(0.04))
+                        )
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 10)
+                                .stroke(accentTeal.opacity(0.15), lineWidth: 1)
+                        )
                     }
                     .padding(12)
                 }
@@ -391,7 +410,7 @@ struct ContentView: View {
             if let fps {
                 Text("\(fps) FPS")
                     .font(.system(size: 10, weight: .bold, design: .monospaced))
-                    .foregroundStyle(.pink)
+                    .foregroundStyle(accentTeal)
             }
         }
     }
@@ -401,8 +420,8 @@ struct ContentView: View {
         let isActive = index == frameVM.activeFrameIndex
         let gs = frameVM.project.gridSize
 
-        return VStack(spacing: 2) {
-            // Mini-Canvas: 64×64 Punkte
+        return VStack(spacing: 4) {
+            // Mini-Canvas: 80×80 Punkte (25% größer als vorher)
             Canvas { context, size in
                 let cellSize = size.width / CGFloat(gs)
 
@@ -425,27 +444,36 @@ struct ContentView: View {
                     }
                 }
             }
-            .frame(width: 64, height: 64)
-            .clipShape(RoundedRectangle(cornerRadius: 4))
+            .frame(width: 80, height: 80)
+            .clipShape(RoundedRectangle(cornerRadius: 6))
             .overlay(
-                RoundedRectangle(cornerRadius: 4)
-                    .stroke(isActive ? .pink : .white.opacity(0.1), lineWidth: isActive ? 2 : 1)
+                RoundedRectangle(cornerRadius: 6)
+                    .stroke(isActive ? accentTeal : .white.opacity(0.1), lineWidth: isActive ? 2.5 : 1)
             )
+            .background(
+                // Glow-Effekt für aktives Frame
+                RoundedRectangle(cornerRadius: 8)
+                    .fill(accentTeal.opacity(isActive ? 0.15 : 0))
+                    .blur(radius: 6)
+            )
+            .shadow(color: isActive ? accentTeal.opacity(0.4) : .clear, radius: 8, y: 0)
 
             // Frame-Nummer + optionale Duration
-            VStack(spacing: 0) {
+            VStack(spacing: 1) {
                 Text("\(index + 1)")
-                    .font(.system(size: 9, weight: .bold, design: .monospaced))
-                    .foregroundStyle(isActive ? .pink : .secondary)
+                    .font(.system(size: 11, weight: .bold, design: .monospaced))
+                    .foregroundStyle(isActive ? accentTeal : .secondary)
                 if let ms = frame.durationMs {
                     Text("\(ms)ms")
-                        .font(.system(size: 7, design: .monospaced))
+                        .font(.system(size: 8, design: .monospaced))
                         .foregroundStyle(.tertiary)
                 }
             }
         }
         .onTapGesture {
-            frameVM.selectFrame(at: index)
+            withAnimation(.easeOut(duration: 0.15)) {
+                frameVM.selectFrame(at: index)
+            }
             #if canImport(UIKit)
             let generator = UIImpactFeedbackGenerator(style: .light)
             generator.impactOccurred()
@@ -453,31 +481,27 @@ struct ContentView: View {
         }
         // MARK: Drag & Drop
         .draggable(frame) {
-            // Drag Preview: was du siehst während du ziehst
-            RoundedRectangle(cornerRadius: 4)
-                .fill(Color.pink.opacity(0.3))
-                .frame(width: 64, height: 64)
+            RoundedRectangle(cornerRadius: 6)
+                .fill(accentTeal.opacity(0.3))
+                .frame(width: 80, height: 80)
                 .overlay(
                     Text("\(index + 1)")
-                        .font(.system(size: 20, weight: .bold, design: .monospaced))
-                        .foregroundStyle(.pink)
+                        .font(.system(size: 24, weight: .bold, design: .monospaced))
+                        .foregroundStyle(accentTeal)
                 )
         }
         .dropDestination(for: SpriteFrame.self) { droppedFrames, _ in
             guard let dropped = droppedFrames.first,
                   let sourceIndex = frameVM.frames.firstIndex(where: { $0.id == dropped.id })
             else { return false }
-            
-            // Nicht auf sich selbst droppen
+
             if sourceIndex == index { return false }
-            
+
             withAnimation(.easeInOut(duration: 0.25)) {
                 frameVM.moveFrame(from: sourceIndex, to: index)
             }
             return true
         } isTargeted: { isTargeted in
-            // Hier könntest du später einen visuellen
-            // Drop-Indikator einbauen
         }
     }
     
