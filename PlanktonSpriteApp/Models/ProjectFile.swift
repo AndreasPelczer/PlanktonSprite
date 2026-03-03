@@ -17,12 +17,15 @@ struct ProjectFile: Codable {
     var name: String
     var fps: Int
     var gridSize: Int
+    var loopAnimation: Bool?
     var frames: [FrameData]
 
     /// Ein einzelner Frame als serialisierbare Pixeldaten
     struct FrameData: Codable {
         /// 2D Array: pixels[y][x] – Hex-Strings oder nil
         var pixels: [[String?]]
+        /// Per-Frame Dauer in Millisekunden (nil = global FPS)
+        var durationMs: Int?
     }
 
     // MARK: - Von AnimationProject → ProjectFile
@@ -32,20 +35,24 @@ struct ProjectFile: Codable {
         self.version = 1
         self.name = project.name
         self.fps = project.fps
-        self.gridSize = PixelCanvas.gridSize
+        self.gridSize = project.gridSize
+        self.loopAnimation = project.loopAnimation
         self.frames = project.frames.map { frame in
-            FrameData(pixels: frame.canvas.pixels.map { row in
-                row.map { color in
-                    color.flatMap { c in
-                        guard let comp = c.cgColorComponents else { return nil }
-                        return String(format: "#%02X%02X%02X%02X",
-                            Int(comp.r * 255),
-                            Int(comp.g * 255),
-                            Int(comp.b * 255),
-                            Int(comp.a * 255))
+            FrameData(
+                pixels: frame.canvas.pixels.map { row in
+                    row.map { color in
+                        color.flatMap { c in
+                            guard let comp = c.cgColorComponents else { return nil }
+                            return String(format: "#%02X%02X%02X%02X",
+                                Int(comp.r * 255),
+                                Int(comp.g * 255),
+                                Int(comp.b * 255),
+                                Int(comp.a * 255))
+                        }
                     }
-                }
-            })
+                },
+                durationMs: frame.durationMs
+            )
         }
     }
 
@@ -53,11 +60,12 @@ struct ProjectFile: Codable {
 
     /// Konvertiert die gespeicherten Daten zurück in ein AnimationProject
     func toProject() -> AnimationProject {
-        var project = AnimationProject(name: name)
+        var project = AnimationProject(name: name, gridSize: gridSize)
         project.fps = fps
+        project.loopAnimation = loopAnimation ?? true
         project.frames = frames.map { frameData in
-            var frame = SpriteFrame()
-            var canvas = PixelCanvas()
+            var frame = SpriteFrame(gridSize: gridSize)
+            var canvas = PixelCanvas(gridSize: gridSize)
             for (y, row) in frameData.pixels.enumerated() {
                 for (x, hexString) in row.enumerated() {
                     if let hex = hexString {
@@ -66,10 +74,11 @@ struct ProjectFile: Codable {
                 }
             }
             frame.canvas = canvas
+            frame.durationMs = frameData.durationMs
             return frame
         }
         if project.frames.isEmpty {
-            project.frames = [SpriteFrame()]
+            project.frames = [SpriteFrame(gridSize: gridSize)]
         }
         return project
     }

@@ -152,9 +152,9 @@ class FrameViewModel: ObservableObject {
     
     // MARK: - Projekt: Neu / Speichern / Laden
 
-    /// Erstellt ein neues leeres Projekt
-    func newProject() {
-        project = AnimationProject()
+    /// Erstellt ein neues leeres Projekt mit optionaler Grid-Größe
+    func newProject(gridSize: Int = PixelCanvas.defaultGridSize) {
+        project = AnimationProject(gridSize: gridSize)
         activeFrameIndex = 0
         currentFileURL = nil
     }
@@ -188,18 +188,70 @@ class FrameViewModel: ObservableObject {
         currentFileURL = url
     }
 
+    // MARK: - Per-Frame Duration
+
+    /// Setzt die individuelle Frame-Dauer in ms
+    func setFrameDuration(_ ms: Int?, at index: Int) {
+        guard project.isValidIndex(index) else { return }
+        project.frames[index].durationMs = ms
+    }
+
+    // MARK: - Autosave
+
+    private var autosaveTimer: Timer?
+
+    /// Startet den Autosave-Timer (alle 60 Sekunden)
+    func startAutosave() {
+        autosaveTimer?.invalidate()
+        autosaveTimer = Timer.scheduledTimer(withTimeInterval: 60, repeats: true) { [weak self] _ in
+            self?.autosave()
+        }
+    }
+
+    /// Stoppt den Autosave-Timer
+    func stopAutosave() {
+        autosaveTimer?.invalidate()
+        autosaveTimer = nil
+    }
+
+    /// Autosave: speichert in einen temporären Slot
+    private func autosave() {
+        let autosaveURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("PlanktonSprite_autosave.plankton")
+        try? saveProject(to: autosaveURL)
+        // currentFileURL nicht überschreiben – Autosave ist unsichtbar
+        if currentFileURL != autosaveURL {
+            currentFileURL = currentFileURL // keep original
+        }
+    }
+
+    /// Prüft ob ein Autosave existiert
+    var hasAutosave: Bool {
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("PlanktonSprite_autosave.plankton")
+        return FileManager.default.fileExists(atPath: url.path)
+    }
+
+    /// Lädt den Autosave
+    func loadAutosave() throws {
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("PlanktonSprite_autosave.plankton")
+        try loadProject(from: url)
+        currentFileURL = nil // Autosave hat keinen "echten" Pfad
+    }
+
     // MARK: - Navigation
-    
+
     /// Wechselt zum nächsten Frame (mit Wraparound)
     func nextFrame() {
         activeFrameIndex = (activeFrameIndex + 1) % frameCount
     }
-    
+
     /// Wechselt zum vorherigen Frame (mit Wraparound)
     func previousFrame() {
         activeFrameIndex = (activeFrameIndex - 1 + frameCount) % frameCount
     }
-    
+
     /// Wechselt zu einem bestimmten Frame
     func selectFrame(at index: Int) {
         guard project.isValidIndex(index) else { return }

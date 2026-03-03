@@ -13,14 +13,34 @@ import SwiftUI
 
 struct PixelCanvasTests {
 
-    @Test func gridSizeIs32() {
-        #expect(PixelCanvas.gridSize == 32)
+    @Test func defaultGridSizeIs32() {
+        #expect(PixelCanvas.defaultGridSize == 32)
+    }
+
+    @Test func customGridSize() {
+        let canvas16 = PixelCanvas(gridSize: 16)
+        #expect(canvas16.gridSize == 16)
+        #expect(canvas16.pixels.count == 16)
+        #expect(canvas16.pixels[0].count == 16)
+
+        let canvas64 = PixelCanvas(gridSize: 64)
+        #expect(canvas64.gridSize == 64)
+        #expect(canvas64.pixels.count == 64)
+        #expect(canvas64.pixels[0].count == 64)
+    }
+
+    @Test func gridSizeClampedToRange() {
+        let canvasTooSmall = PixelCanvas(gridSize: 0)
+        #expect(canvasTooSmall.gridSize == 1)
+
+        let canvasTooLarge = PixelCanvas(gridSize: 999)
+        #expect(canvasTooLarge.gridSize == 128)
     }
 
     @Test func newCanvasIsEmpty() {
         let canvas = PixelCanvas()
-        for y in 0..<PixelCanvas.gridSize {
-            for x in 0..<PixelCanvas.gridSize {
+        for y in 0..<PixelCanvas.defaultGridSize {
+            for x in 0..<PixelCanvas.defaultGridSize {
                 #expect(canvas.pixel(at: x, y: y) == nil)
             }
         }
@@ -56,8 +76,8 @@ struct PixelCanvasTests {
         canvas.setPixel(at: 0, y: -1, color: .red)
         canvas.setPixel(at: 0, y: 32, color: .red)
         // Should not crash and canvas should remain empty
-        for y in 0..<PixelCanvas.gridSize {
-            for x in 0..<PixelCanvas.gridSize {
+        for y in 0..<PixelCanvas.defaultGridSize {
+            for x in 0..<PixelCanvas.defaultGridSize {
                 #expect(canvas.pixel(at: x, y: y) == nil)
             }
         }
@@ -116,11 +136,28 @@ struct SpriteFrameTests {
 
     @Test func newFrameHasEmptyCanvas() {
         let frame = SpriteFrame()
-        for y in 0..<PixelCanvas.gridSize {
-            for x in 0..<PixelCanvas.gridSize {
+        for y in 0..<PixelCanvas.defaultGridSize {
+            for x in 0..<PixelCanvas.defaultGridSize {
                 #expect(frame.canvas.pixel(at: x, y: y) == nil)
             }
         }
+    }
+
+    @Test func newFrameWithCustomGridSize() {
+        let frame = SpriteFrame(gridSize: 16)
+        #expect(frame.canvas.gridSize == 16)
+        #expect(frame.canvas.pixels.count == 16)
+    }
+
+    @Test func newFrameHasNilDuration() {
+        let frame = SpriteFrame()
+        #expect(frame.durationMs == nil)
+    }
+
+    @Test func frameWithDuration() {
+        let canvas = PixelCanvas()
+        let frame = SpriteFrame(canvas: canvas, durationMs: 200)
+        #expect(frame.durationMs == 200)
     }
 
     @Test func newFrameHasUniqueID() {
@@ -156,8 +193,8 @@ struct SpriteFrameTests {
         let decoded = try JSONDecoder().decode(SpriteFrame.self, from: data)
         #expect(decoded.id == original.id)
         // Decoded frame should have empty canvas (pixels not serialized)
-        for y in 0..<PixelCanvas.gridSize {
-            for x in 0..<PixelCanvas.gridSize {
+        for y in 0..<PixelCanvas.defaultGridSize {
+            for x in 0..<PixelCanvas.defaultGridSize {
                 #expect(decoded.canvas.pixel(at: x, y: y) == nil)
             }
         }
@@ -181,6 +218,28 @@ struct AnimationProjectTests {
     @Test func defaultFPSIsSix() {
         let project = AnimationProject()
         #expect(project.fps == 6)
+    }
+
+    @Test func defaultGridSizeIs32() {
+        let project = AnimationProject()
+        #expect(project.gridSize == 32)
+    }
+
+    @Test func customGridSize() {
+        let project = AnimationProject(gridSize: 16)
+        #expect(project.gridSize == 16)
+        #expect(project.frames[0].canvas.gridSize == 16)
+    }
+
+    @Test func loopAnimationDefaultsToTrue() {
+        let project = AnimationProject()
+        #expect(project.loopAnimation == true)
+    }
+
+    @Test func insertFrameUsesProjectGridSize() {
+        var project = AnimationProject(gridSize: 64)
+        let newIdx = project.insertFrame(after: 0)
+        #expect(project.frames[newIdx].canvas.gridSize == 64)
     }
 
     @Test func customName() {
@@ -337,6 +396,43 @@ struct ProjectFileTests {
         let project = AnimationProject()
         let file = ProjectFile(from: project)
         #expect(file.gridSize == 32)
+    }
+
+    @Test func projectFileStoresCustomGridSize() {
+        let project = AnimationProject(gridSize: 64)
+        let file = ProjectFile(from: project)
+        #expect(file.gridSize == 64)
+    }
+
+    @Test func projectFileStoresLoopAnimation() {
+        var project = AnimationProject()
+        project.loopAnimation = false
+        let file = ProjectFile(from: project)
+        #expect(file.loopAnimation == false)
+    }
+
+    @Test func roundTripPreservesGridSize() {
+        let project = AnimationProject(gridSize: 16)
+        let file = ProjectFile(from: project)
+        let restored = file.toProject()
+        #expect(restored.gridSize == 16)
+        #expect(restored.frames[0].canvas.gridSize == 16)
+    }
+
+    @Test func roundTripPreservesFrameDuration() {
+        var project = AnimationProject()
+        project.frames[0].durationMs = 250
+        let file = ProjectFile(from: project)
+        let restored = file.toProject()
+        #expect(restored.frames[0].durationMs == 250)
+    }
+
+    @Test func roundTripPreservesLoopAnimation() {
+        var project = AnimationProject()
+        project.loopAnimation = false
+        let file = ProjectFile(from: project)
+        let restored = file.toProject()
+        #expect(restored.loopAnimation == false)
     }
 
     @Test func emptyCanvasSerializesToNils() {
@@ -563,10 +659,11 @@ struct CanvasViewModelTests {
         #expect(canvasVM.canRedo == false)
     }
 
-    @Test func undoStackLimitedTo20() {
+    @Test func undoStackLimitedToMax() {
         let frameVM = FrameViewModel()
         let canvasVM = CanvasViewModel()
         canvasVM.connect(to: frameVM)
+        canvasVM.maxUndoSteps = 20 // Test with reduced limit
 
         canvasVM.currentTool = .pen
         canvasVM.currentColor = .red
@@ -641,8 +738,8 @@ struct CanvasViewModelTests {
         canvasVM.beginStroke(at: 0, y: 0)
 
         // All pixels should be red
-        for y in 0..<PixelCanvas.gridSize {
-            for x in 0..<PixelCanvas.gridSize {
+        for y in 0..<PixelCanvas.defaultGridSize {
+            for x in 0..<PixelCanvas.defaultGridSize {
                 #expect(frameVM.activeCanvas.pixel(at: x, y: y) == .red)
             }
         }
@@ -691,6 +788,153 @@ struct CanvasViewModelTests {
         #expect(CanvasViewModel.Tool.pen.rawValue == "Stift")
         #expect(CanvasViewModel.Tool.eraser.rawValue == "Radierer")
         #expect(CanvasViewModel.Tool.fill.rawValue == "Füllen")
+        #expect(CanvasViewModel.Tool.line.rawValue == "Linie")
+        #expect(CanvasViewModel.Tool.rectangle.rawValue == "Rechteck")
+    }
+
+    @Test func toolIconNames_extended() {
+        #expect(CanvasViewModel.Tool.line.iconName == "line.diagonal")
+        #expect(CanvasViewModel.Tool.rectangle.iconName == "rectangle")
+    }
+
+    @Test func lineToolDrawsLine() {
+        let frameVM = FrameViewModel()
+        let canvasVM = CanvasViewModel()
+        canvasVM.connect(to: frameVM)
+
+        canvasVM.currentTool = .line
+        canvasVM.currentColor = .red
+        canvasVM.beginStroke(at: 0, y: 0)
+        canvasVM.continueStroke(at: 4, y: 0)
+        canvasVM.endStroke(at: 4, y: 0)
+
+        // Horizontal line from (0,0) to (4,0) – all pixels should be red
+        for x in 0...4 {
+            #expect(frameVM.activeCanvas.pixel(at: x, y: 0) == .red)
+        }
+        // Pixel outside should be nil
+        #expect(frameVM.activeCanvas.pixel(at: 5, y: 0) == nil)
+    }
+
+    @Test func lineToolDiagonal() {
+        let frameVM = FrameViewModel()
+        let canvasVM = CanvasViewModel()
+        canvasVM.connect(to: frameVM)
+
+        canvasVM.currentTool = .line
+        canvasVM.currentColor = .blue
+        canvasVM.beginStroke(at: 0, y: 0)
+        canvasVM.endStroke(at: 3, y: 3)
+
+        // Diagonal line – should have pixels at (0,0), (1,1), (2,2), (3,3)
+        #expect(frameVM.activeCanvas.pixel(at: 0, y: 0) == .blue)
+        #expect(frameVM.activeCanvas.pixel(at: 1, y: 1) == .blue)
+        #expect(frameVM.activeCanvas.pixel(at: 2, y: 2) == .blue)
+        #expect(frameVM.activeCanvas.pixel(at: 3, y: 3) == .blue)
+    }
+
+    @Test func rectangleToolDrawsOutline() {
+        let frameVM = FrameViewModel()
+        let canvasVM = CanvasViewModel()
+        canvasVM.connect(to: frameVM)
+
+        canvasVM.currentTool = .rectangle
+        canvasVM.currentColor = .green
+        canvasVM.beginStroke(at: 1, y: 1)
+        canvasVM.endStroke(at: 5, y: 5)
+
+        // Top edge
+        for x in 1...5 {
+            #expect(frameVM.activeCanvas.pixel(at: x, y: 1) == .green)
+        }
+        // Bottom edge
+        for x in 1...5 {
+            #expect(frameVM.activeCanvas.pixel(at: x, y: 5) == .green)
+        }
+        // Left edge
+        for y in 1...5 {
+            #expect(frameVM.activeCanvas.pixel(at: 1, y: y) == .green)
+        }
+        // Inside should be empty
+        #expect(frameVM.activeCanvas.pixel(at: 3, y: 3) == nil)
+    }
+
+    @Test func lineToolIsUndoable() {
+        let frameVM = FrameViewModel()
+        let canvasVM = CanvasViewModel()
+        canvasVM.connect(to: frameVM)
+
+        canvasVM.currentTool = .line
+        canvasVM.currentColor = .red
+        canvasVM.beginStroke(at: 0, y: 0)
+        canvasVM.endStroke(at: 5, y: 0)
+        #expect(frameVM.activeCanvas.pixel(at: 0, y: 0) == .red)
+
+        canvasVM.undo()
+        #expect(frameVM.activeCanvas.pixel(at: 0, y: 0) == nil)
+    }
+
+    @Test func zoomInAndOut() {
+        let vm = CanvasViewModel()
+        #expect(vm.zoomScale == 1.0)
+
+        vm.zoomIn()
+        #expect(vm.zoomScale == 1.5)
+
+        vm.zoomOut()
+        #expect(vm.zoomScale == 1.0)
+
+        vm.zoomOut()
+        #expect(vm.zoomScale == 0.5)
+
+        // Should not go below min
+        vm.zoomOut()
+        #expect(vm.zoomScale == 0.5)
+    }
+
+    @Test func zoomMaxLimit() {
+        let vm = CanvasViewModel()
+        for _ in 0..<20 {
+            vm.zoomIn()
+        }
+        #expect(vm.zoomScale == vm.maxZoom)
+    }
+
+    @Test func resetZoom() {
+        let vm = CanvasViewModel()
+        vm.zoomIn()
+        vm.zoomIn()
+        vm.resetZoom()
+        #expect(vm.zoomScale == 1.0)
+    }
+
+    @Test func onionSkinDefaultState() {
+        let vm = CanvasViewModel()
+        #expect(vm.onionSkinEnabled == false)
+        #expect(vm.onionSkinPrevious == true)
+        #expect(vm.onionSkinNext == false)
+        #expect(vm.onionSkinOpacity == 0.3)
+    }
+
+    @Test func undoStackLimitedTo50() {
+        let frameVM = FrameViewModel()
+        let canvasVM = CanvasViewModel()
+        canvasVM.connect(to: frameVM)
+
+        canvasVM.currentTool = .pen
+        canvasVM.currentColor = .red
+
+        // Do 55 strokes
+        for i in 0..<55 {
+            canvasVM.beginStroke(at: i % 32, y: (i / 32) % 32)
+        }
+
+        var undoCount = 0
+        while canvasVM.canUndo {
+            canvasVM.undo()
+            undoCount += 1
+        }
+        #expect(undoCount == 50)
     }
 }
 
@@ -924,6 +1168,46 @@ struct FrameViewModelTests {
     }
 }
 
+// MARK: - FrameViewModel Extended Tests
+
+@MainActor
+struct FrameViewModelExtendedTests {
+
+    @Test func newProjectWithGridSize() {
+        let vm = FrameViewModel()
+        vm.newProject(gridSize: 16)
+        #expect(vm.project.gridSize == 16)
+        #expect(vm.activeCanvas.gridSize == 16)
+    }
+
+    @Test func setFrameDuration() {
+        let vm = FrameViewModel()
+        vm.setFrameDuration(200, at: 0)
+        #expect(vm.project.frames[0].durationMs == 200)
+    }
+
+    @Test func setFrameDurationNilClearsIt() {
+        let vm = FrameViewModel()
+        vm.setFrameDuration(200, at: 0)
+        vm.setFrameDuration(nil, at: 0)
+        #expect(vm.project.frames[0].durationMs == nil)
+    }
+
+    @Test func setFrameDurationInvalidIndex() {
+        let vm = FrameViewModel()
+        vm.setFrameDuration(200, at: 99)
+        // Should not crash
+        #expect(vm.project.frames[0].durationMs == nil)
+    }
+
+    @Test func duplicateFramePreservesDuration() {
+        let vm = FrameViewModel()
+        vm.setFrameDuration(150, at: 0)
+        vm.duplicateActiveFrame()
+        #expect(vm.project.frames[1].durationMs == 150)
+    }
+}
+
 // MARK: - ExportError Tests
 
 struct ExportErrorTests {
@@ -935,5 +1219,81 @@ struct ExportErrorTests {
         #expect(ExportError.contextCreationFailed.errorDescription != nil)
         #expect(ExportError.imageCreationFailed.errorDescription != nil)
         #expect(ExportError.pngEncodingFailed.errorDescription != nil)
+    }
+}
+
+// MARK: - ExportViewModel Tests
+
+@MainActor
+struct ExportViewModelTests {
+
+    @Test func defaultSettings() {
+        let vm = ExportViewModel()
+        #expect(vm.transparentBackground == false)
+        #expect(vm.spritesheetLayout == .horizontal)
+        #expect(vm.enginePreset == .generic)
+        #expect(vm.spritesheetPadding == 0)
+    }
+
+    @Test func spritesheetLayoutCases() {
+        let allCases = ExportViewModel.SpritesheetLayout.allCases
+        #expect(allCases.count == 3)
+        #expect(allCases.contains(.horizontal))
+        #expect(allCases.contains(.vertical))
+        #expect(allCases.contains(.grid))
+    }
+
+    @Test func enginePresetCases() {
+        let allCases = ExportViewModel.EnginePreset.allCases
+        #expect(allCases.count == 4)
+        #expect(allCases.contains(.generic))
+        #expect(allCases.contains(.unity))
+        #expect(allCases.contains(.godot))
+        #expect(allCases.contains(.spriteKit))
+    }
+}
+
+// MARK: - PaletteManager Tests
+
+struct PaletteManagerTests {
+
+    @Test func initiallyEmpty() {
+        let manager = PaletteManager()
+        // May have saved palettes from previous runs, but structure should be valid
+        #expect(manager.savedPalettes is [SavedPalette])
+    }
+
+    @Test func savedPaletteInit() {
+        let palette = SavedPalette(name: "Test", colors: [.red, .blue, .green])
+        #expect(palette.name == "Test")
+        #expect(palette.colors.count == 3)
+        #expect(palette.swiftUIColors.count == 3)
+    }
+
+    @Test func savedPaletteHexRoundTrip() {
+        let palette = SavedPalette(name: "Hex Test", colors: [.black, .white])
+        #expect(palette.colors.contains("#000000"))
+        #expect(palette.colors.contains("#FFFFFF"))
+    }
+}
+
+// MARK: - PixelCanvas PresetSize Tests
+
+struct PresetSizeTests {
+
+    @Test func presetSizeValues() {
+        #expect(PixelCanvas.PresetSize.small.rawValue == 16)
+        #expect(PixelCanvas.PresetSize.medium.rawValue == 32)
+        #expect(PixelCanvas.PresetSize.large.rawValue == 64)
+    }
+
+    @Test func presetSizeLabels() {
+        #expect(PixelCanvas.PresetSize.small.label == "16×16")
+        #expect(PixelCanvas.PresetSize.medium.label == "32×32")
+        #expect(PixelCanvas.PresetSize.large.label == "64×64")
+    }
+
+    @Test func allPresetSizes() {
+        #expect(PixelCanvas.PresetSize.allCases.count == 3)
     }
 }

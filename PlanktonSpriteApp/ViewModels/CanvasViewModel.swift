@@ -15,19 +15,23 @@ import Combine
 class CanvasViewModel: ObservableObject {
 
     // MARK: - Werkzeuge
-    
-    /// Die drei verfügbaren Zeichenwerkzeuge
+
+    /// Verfügbare Zeichenwerkzeuge
     enum Tool: String, CaseIterable {
         case pen = "Stift"
         case eraser = "Radierer"
         case fill = "Füllen"
-        
+        case line = "Linie"
+        case rectangle = "Rechteck"
+
         /// SF Symbol Name für die Toolbar-Icons
         var iconName: String {
             switch self {
-            case .pen:    return "pencil"
-            case .eraser: return "eraser"
-            case .fill:   return "drop.fill"
+            case .pen:       return "pencil"
+            case .eraser:    return "eraser"
+            case .fill:      return "drop.fill"
+            case .line:      return "line.diagonal"
+            case .rectangle: return "rectangle"
             }
         }
     }
@@ -48,17 +52,50 @@ class CanvasViewModel: ObservableObject {
     
     /// Redo-Stack: speichert rückgängig gemachte Zustände
     @Published private(set) var canRedo: Bool = false
-    
+
+    // MARK: - Onion Skin
+
+    /// Onion Skin aktiviert
+    @Published var onionSkinEnabled: Bool = false
+
+    /// Vorheriges Frame anzeigen
+    @Published var onionSkinPrevious: Bool = true
+
+    /// Nächstes Frame anzeigen
+    @Published var onionSkinNext: Bool = false
+
+    /// Transparenz des Onion Skin Overlays (0.0–1.0)
+    @Published var onionSkinOpacity: Double = 0.3
+
+    // MARK: - Zoom
+
+    /// Aktueller Zoom-Level (1.0 = 100%)
+    @Published var zoomScale: CGFloat = 1.0
+
+    /// Minimaler Zoom
+    let minZoom: CGFloat = 0.5
+
+    /// Maximaler Zoom
+    let maxZoom: CGFloat = 4.0
+
+    // MARK: - Line/Shape Tool State
+
+    /// Startpunkt für Linien/Rechteck-Tool
+    @Published var shapeStartPoint: (x: Int, y: Int)?
+
+    /// Canvas-Zustand vor Shape-Preview (für Live-Vorschau)
+    private var preShapeCanvas: PixelCanvas?
+
     // MARK: - Undo/Redo Stacks
-    
-    /// Vorherige Zustände – maximal 20, damit der Speicher nicht explodiert
+
+    /// Vorherige Zustände – max 50 in Free
     private var undoStack: [PixelCanvas] = []
-    
+
     /// Rückgängig gemachte Zustände
     private var redoStack: [PixelCanvas] = []
-    
+
     /// Maximale Anzahl gespeicherter Undo-Schritte
-    private let maxUndoSteps = 20
+    var maxUndoSteps = 50
     
     // MARK: - Referenz zum Projekt
     
@@ -91,30 +128,67 @@ class CanvasViewModel: ObservableObject {
     /// Speichert den Zustand für Undo, dann malt den ersten Pixel.
     func beginStroke(at x: Int, y: Int) {
         saveUndoState()
-        applyTool(at: x, y: y)
+
+        switch currentTool {
+        case .line, .rectangle:
+            shapeStartPoint = (x, y)
+            preShapeCanvas = frameViewModel?.activeCanvas
+        default:
+            applyTool(at: x, y: y)
+        }
     }
-    
+
     /// Wird aufgerufen wenn der Finger/Stift sich BEWEGT.
     /// Malt weitere Pixel ohne neuen Undo-Zustand.
     func continueStroke(at x: Int, y: Int) {
-        applyTool(at: x, y: y)
+        switch currentTool {
+        case .line:
+            guard let start = shapeStartPoint, var canvas = preShapeCanvas else { return }
+            drawLine(canvas: &canvas, x0: start.x, y0: start.y, x1: x, y1: y, color: currentColor)
+            frameViewModel?.updateActiveCanvas(canvas)
+        case .rectangle:
+            guard let start = shapeStartPoint, var canvas = preShapeCanvas else { return }
+            drawRectangle(canvas: &canvas, x0: start.x, y0: start.y, x1: x, y1: y, color: currentColor)
+            frameViewModel?.updateActiveCanvas(canvas)
+        default:
+            applyTool(at: x, y: y)
+        }
     }
-    
+
+    /// Wird aufgerufen wenn der Finger/Stift losgelassen wird.
+    /// Finalisiert Linien/Rechteck-Operationen.
+    func endStroke(at x: Int, y: Int) {
+        switch currentTool {
+        case .line:
+            guard let start = shapeStartPoint, var canvas = preShapeCanvas else { return }
+            drawLine(canvas: &canvas, x0: start.x, y0: start.y, x1: x, y1: y, color: currentColor)
+            frameViewModel?.updateActiveCanvas(canvas)
+        case .rectangle:
+            guard let start = shapeStartPoint, var canvas = preShapeCanvas else { return }
+            drawRectangle(canvas: &canvas, x0: start.x, y0: start.y, x1: x, y1: y, color: currentColor)
+            frameViewModel?.updateActiveCanvas(canvas)
+        default:
+            break
+        }
+        shapeStartPoint = nil
+        preShapeCanvas = nil
+    }
+
     /// Wendet das aktuelle Werkzeug auf die Koordinate an.
     private func applyTool(at x: Int, y: Int) {
         guard var canvas = frameViewModel?.activeCanvas else { return }
-        
+
         switch currentTool {
         case .pen:
             canvas.setPixel(at: x, y: y, color: currentColor)
-            
         case .eraser:
             canvas.setPixel(at: x, y: y, color: nil)
-            
         case .fill:
             floodFill(canvas: &canvas, x: x, y: y, newColor: currentColor)
+        case .line, .rectangle:
+            break // handled in begin/continue/endStroke
         }
-        
+
         frameViewModel?.updateActiveCanvas(canvas)
     }
     
@@ -150,6 +224,72 @@ class CanvasViewModel: ObservableObject {
         }
     }
     
+    // MARK: - Line Tool (Bresenham)
+
+    /// Zeichnet eine Linie mit dem Bresenham-Algorithmus.
+    /// Pixel-perfekt, keine Anti-Aliasing-Magie.
+    private func drawLine(canvas: inout PixelCanvas, x0: Int, y0: Int, x1: Int, y1: Int, color: Color) {
+        var x = x0
+        var y = y0
+        let dx = abs(x1 - x0)
+        let dy = -abs(y1 - y0)
+        let sx = x0 < x1 ? 1 : -1
+        let sy = y0 < y1 ? 1 : -1
+        var err = dx + dy
+
+        while true {
+            canvas.setPixel(at: x, y: y, color: color)
+            if x == x1 && y == y1 { break }
+            let e2 = 2 * err
+            if e2 >= dy {
+                err += dy
+                x += sx
+            }
+            if e2 <= dx {
+                err += dx
+                y += sy
+            }
+        }
+    }
+
+    // MARK: - Rectangle Tool
+
+    /// Zeichnet ein Rechteck (nur Umriss) zwischen zwei Eckpunkten.
+    private func drawRectangle(canvas: inout PixelCanvas, x0: Int, y0: Int, x1: Int, y1: Int, color: Color) {
+        let minX = min(x0, x1)
+        let maxX = max(x0, x1)
+        let minY = min(y0, y1)
+        let maxY = max(y0, y1)
+
+        // Obere und untere Kante
+        for x in minX...maxX {
+            canvas.setPixel(at: x, y: minY, color: color)
+            canvas.setPixel(at: x, y: maxY, color: color)
+        }
+        // Linke und rechte Kante
+        for y in minY...maxY {
+            canvas.setPixel(at: minX, y: y, color: color)
+            canvas.setPixel(at: maxX, y: y, color: color)
+        }
+    }
+
+    // MARK: - Zoom
+
+    /// Zoom vergrößern
+    func zoomIn() {
+        zoomScale = min(zoomScale + 0.5, maxZoom)
+    }
+
+    /// Zoom verkleinern
+    func zoomOut() {
+        zoomScale = max(zoomScale - 0.5, minZoom)
+    }
+
+    /// Zoom zurücksetzen
+    func resetZoom() {
+        zoomScale = 1.0
+    }
+
     // MARK: - Undo / Redo
     
     /// Speichert den aktuellen Canvas-Zustand auf den Undo-Stack.

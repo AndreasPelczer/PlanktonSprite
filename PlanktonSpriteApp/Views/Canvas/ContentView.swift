@@ -197,60 +197,143 @@ struct ContentView: View {
                     .frame(width: 1)
 
                 // Rechte Seite: Vorschau + Export
-                VStack(spacing: 10) {
-                    sectionHeader("VORSCHAU", fps: frameVM.project.fps)
+                ScrollView(.vertical, showsIndicators: false) {
+                    VStack(spacing: 10) {
+                        // MARK: - Canvas-Größe
+                        sectionHeader("CANVAS", count: nil, fps: nil)
 
-                    // FPS Slider
-                    HStack(spacing: 8) {
-                        Text("1")
-                            .font(.system(size: 9, design: .monospaced))
-                            .foregroundStyle(.tertiary)
-
-                        Slider(
-                            value: Binding(
-                                get: { Double(frameVM.project.fps) },
-                                set: { frameVM.project.fps = Int($0) }
-                            ),
-                            in: 1...24,
-                            step: 1
-                        )
-                        .controlSize(.small)
-
-                        Text("24")
-                            .font(.system(size: 9, design: .monospaced))
-                            .foregroundStyle(.tertiary)
-                    }
-
-                    // Preview-Fläche
-                    previewCanvas
-
-                    Spacer()
-
-                    // Export-Buttons
-                    HStack(spacing: 8) {
-                        Button {
-                            exportVM.exportGIF()
-                        } label: {
-                            Label("GIF", systemImage: "square.and.arrow.up")
-                                .font(.system(size: 11, weight: .semibold))
+                        HStack(spacing: 4) {
+                            ForEach(PixelCanvas.PresetSize.allCases) { preset in
+                                Button {
+                                    frameVM.newProject(gridSize: preset.rawValue)
+                                    canvasVM.resetUndoHistory()
+                                } label: {
+                                    Text(preset.label)
+                                        .font(.system(size: 9, weight: .semibold, design: .monospaced))
+                                }
+                                .buttonStyle(.bordered)
+                                .controlSize(.mini)
+                                .tint(frameVM.project.gridSize == preset.rawValue ? .pink : nil)
+                            }
                         }
-                        .buttonStyle(.borderedProminent)
-                        .controlSize(.small)
-                        .tint(.pink)
-                        .disabled(exportVM.isExporting)
 
-                        Button {
-                            exportVM.exportSpritesheet()
-                        } label: {
-                            Label("PNG", systemImage: "rectangle.split.3x1")
-                                .font(.system(size: 11, weight: .semibold))
+                        Divider()
+
+                        // MARK: - Vorschau
+                        sectionHeader("VORSCHAU", fps: frameVM.project.fps)
+
+                        // FPS Slider
+                        HStack(spacing: 8) {
+                            Text("1")
+                                .font(.system(size: 9, design: .monospaced))
+                                .foregroundStyle(.tertiary)
+
+                            Slider(
+                                value: Binding(
+                                    get: { Double(frameVM.project.fps) },
+                                    set: { frameVM.project.fps = Int($0) }
+                                ),
+                                in: 1...24,
+                                step: 1
+                            )
+                            .controlSize(.small)
+
+                            Text("24")
+                                .font(.system(size: 9, design: .monospaced))
+                                .foregroundStyle(.tertiary)
                         }
-                        .buttonStyle(.bordered)
+
+                        // Loop Toggle
+                        Toggle(isOn: $frameVM.project.loopAnimation) {
+                            Label("Loop", systemImage: "repeat")
+                                .font(.system(size: 10, weight: .medium))
+                        }
+                        .toggleStyle(.switch)
+                        .controlSize(.mini)
+
+                        // Preview-Fläche
+                        previewCanvas
+
+                        Divider()
+
+                        // MARK: - Onion Skin
+                        if canvasVM.onionSkinEnabled {
+                            sectionHeader("ONION SKIN", count: nil, fps: nil)
+
+                            Toggle("Vorheriger Frame", isOn: $canvasVM.onionSkinPrevious)
+                                .font(.system(size: 10))
+                                .toggleStyle(.switch)
+                                .controlSize(.mini)
+
+                            Toggle("Nächster Frame", isOn: $canvasVM.onionSkinNext)
+                                .font(.system(size: 10))
+                                .toggleStyle(.switch)
+                                .controlSize(.mini)
+
+                            HStack {
+                                Text("Opacity")
+                                    .font(.system(size: 9, design: .monospaced))
+                                    .foregroundStyle(.tertiary)
+                                Slider(value: $canvasVM.onionSkinOpacity, in: 0.05...0.8)
+                                    .controlSize(.small)
+                            }
+
+                            Divider()
+                        }
+
+                        // MARK: - Export
+                        sectionHeader("EXPORT", count: nil, fps: nil)
+
+                        // Transparent BG
+                        Toggle("Transparenter Hintergrund", isOn: $exportVM.transparentBackground)
+                            .font(.system(size: 10))
+                            .toggleStyle(.switch)
+                            .controlSize(.mini)
+
+                        // Spritesheet Layout
+                        Picker("Layout", selection: $exportVM.spritesheetLayout) {
+                            ForEach(ExportViewModel.SpritesheetLayout.allCases) { layout in
+                                Text(layout.rawValue).tag(layout)
+                            }
+                        }
+                        .pickerStyle(.segmented)
+                        .controlSize(.mini)
+
+                        // Engine Preset
+                        Picker("Preset", selection: $exportVM.enginePreset) {
+                            ForEach(ExportViewModel.EnginePreset.allCases) { preset in
+                                Text(preset.rawValue).tag(preset)
+                            }
+                        }
+                        .pickerStyle(.menu)
                         .controlSize(.small)
-                        .disabled(exportVM.isExporting)
+
+                        // Export-Buttons
+                        HStack(spacing: 8) {
+                            Button {
+                                exportVM.exportGIF()
+                            } label: {
+                                Label("GIF", systemImage: "square.and.arrow.up")
+                                    .font(.system(size: 11, weight: .semibold))
+                            }
+                            .buttonStyle(.borderedProminent)
+                            .controlSize(.small)
+                            .tint(.pink)
+                            .disabled(exportVM.isExporting)
+
+                            Button {
+                                exportVM.exportSpritesheet()
+                            } label: {
+                                Label("PNG+JSON", systemImage: "rectangle.split.3x1")
+                                    .font(.system(size: 11, weight: .semibold))
+                            }
+                            .buttonStyle(.bordered)
+                            .controlSize(.small)
+                            .disabled(exportVM.isExporting)
+                        }
                     }
+                    .padding(12)
                 }
-                .padding(12)
                 .frame(width: 240)
                 .background(.background.opacity(0.5))
             }
@@ -285,19 +368,20 @@ struct ContentView: View {
     /// Einzelnes Frame-Thumbnail mit Drag & Drop
     private func frameThumb(index: Int, frame: SpriteFrame) -> some View {
         let isActive = index == frameVM.activeFrameIndex
-        
+        let gs = frameVM.project.gridSize
+
         return VStack(spacing: 2) {
             // Mini-Canvas: 64×64 Punkte
             Canvas { context, size in
-                let cellSize = size.width / CGFloat(PixelCanvas.gridSize)
-                
+                let cellSize = size.width / CGFloat(gs)
+
                 context.fill(
                     Path(CGRect(origin: .zero, size: size)),
                     with: .color(Color(red: 0.12, green: 0.12, blue: 0.16))
                 )
-                
-                for y in 0..<PixelCanvas.gridSize {
-                    for x in 0..<PixelCanvas.gridSize {
+
+                for y in 0..<gs {
+                    for x in 0..<gs {
                         if let color = frame.canvas.pixel(at: x, y: y) {
                             let rect = CGRect(
                                 x: CGFloat(x) * cellSize,
@@ -316,14 +400,25 @@ struct ContentView: View {
                 RoundedRectangle(cornerRadius: 4)
                     .stroke(isActive ? .pink : .white.opacity(0.1), lineWidth: isActive ? 2 : 1)
             )
-            
-            // Frame-Nummer
-            Text("\(index + 1)")
-                .font(.system(size: 9, weight: .bold, design: .monospaced))
-                .foregroundStyle(isActive ? .pink : .secondary)
+
+            // Frame-Nummer + optionale Duration
+            VStack(spacing: 0) {
+                Text("\(index + 1)")
+                    .font(.system(size: 9, weight: .bold, design: .monospaced))
+                    .foregroundStyle(isActive ? .pink : .secondary)
+                if let ms = frame.durationMs {
+                    Text("\(ms)ms")
+                        .font(.system(size: 7, design: .monospaced))
+                        .foregroundStyle(.tertiary)
+                }
+            }
         }
         .onTapGesture {
             frameVM.selectFrame(at: index)
+            #if canImport(UIKit)
+            let generator = UIImpactFeedbackGenerator(style: .light)
+            generator.impactOccurred()
+            #endif
         }
         // MARK: Drag & Drop
         .draggable(frame) {
@@ -356,24 +451,22 @@ struct ContentView: View {
     }
     
     /// Einfache animierte Vorschau.
-    /// Wechselt per Timer durch alle Frames.
     private var previewCanvas: some View {
-        TimelineView(.periodic(from: .now, by: 1.0 / Double(frameVM.project.fps))) { timeline in
+        let gs = frameVM.project.gridSize
+        return TimelineView(.periodic(from: .now, by: 1.0 / Double(frameVM.project.fps))) { timeline in
             let frameIndex = animationFrameIndex(for: timeline.date)
-            let grid = frameVM.project.frame(at: frameIndex)?.canvas ?? PixelCanvas()
-            
+            let grid = frameVM.project.frame(at: frameIndex)?.canvas ?? PixelCanvas(gridSize: gs)
+
             Canvas { context, size in
-                let cellSize = size.width / CGFloat(PixelCanvas.gridSize)
-                
-                // Dunkler Hintergrund
+                let cellSize = size.width / CGFloat(gs)
+
                 context.fill(
                     Path(CGRect(origin: .zero, size: size)),
                     with: .color(Color(red: 0.05, green: 0.05, blue: 0.08))
                 )
-                
-                // Pixel
-                for y in 0..<PixelCanvas.gridSize {
-                    for x in 0..<PixelCanvas.gridSize {
+
+                for y in 0..<gs {
+                    for x in 0..<gs {
                         if let color = grid.pixel(at: x, y: y) {
                             let rect = CGRect(
                                 x: CGFloat(x) * cellSize,
@@ -394,15 +487,18 @@ struct ContentView: View {
             )
         }
     }
-    
+
     /// Berechnet welcher Frame gerade angezeigt werden soll.
-    /// Basiert auf der aktuellen Zeit und FPS.
     private func animationFrameIndex(for date: Date) -> Int {
         guard frameVM.frameCount > 0 else { return 0 }
         let elapsed = date.timeIntervalSinceReferenceDate
         let fps = Double(frameVM.project.fps)
         let totalFrames = frameVM.frameCount
-        return Int(elapsed * fps) % totalFrames
+        if frameVM.project.loopAnimation {
+            return Int(elapsed * fps) % totalFrames
+        } else {
+            return min(Int(elapsed * fps) % totalFrames, totalFrames - 1)
+        }
     }
 
     // MARK: - iPad Save

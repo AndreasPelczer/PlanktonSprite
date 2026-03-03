@@ -11,8 +11,15 @@ import SwiftUI
 /// Die Farbpalette unter dem Canvas.
 /// Vordefinierte Farben + Custom Color Picker.
 struct ColorPaletteView: View {
-    
+
     @EnvironmentObject var canvasVM: CanvasViewModel
+    @EnvironmentObject var paletteManager: PaletteManager
+
+    /// Name für neue Palette
+    @State private var newPaletteName: String = ""
+    @State private var showSavePalette: Bool = false
+    /// Aktuell geladene Saved Palette (nil = Standard)
+    @State private var activeSavedPalette: SavedPalette?
     
     // MARK: - Farbpalette
     
@@ -58,13 +65,20 @@ struct ColorPaletteView: View {
     /// Anzahl Spalten im Grid
     private let columns = 4
     
+    /// Die aktuell angezeigte Palette (Standard oder gespeichert)
+    private var displayPalette: [Color] {
+        if let saved = activeSavedPalette {
+            return saved.swiftUIColors
+        }
+        return palette
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            
+
             // MARK: - Aktuelle Farbe + Picker
-            
+
             HStack(spacing: 10) {
-                // Farbvorschau: aktuell gewählte Farbe
                 RoundedRectangle(cornerRadius: 6)
                     .fill(canvasVM.currentColor)
                     .frame(width: 32, height: 32)
@@ -72,29 +86,87 @@ struct ColorPaletteView: View {
                         RoundedRectangle(cornerRadius: 6)
                             .stroke(.white.opacity(0.3), lineWidth: 1)
                     )
-                
-                // macOS Color Picker für beliebige Farben
+
                 ColorPicker("", selection: $canvasVM.currentColor, supportsOpacity: false)
                     .labelsHidden()
                     .frame(width: 32, height: 32)
                     .help("Eigene Farbe wählen")
-                
+
                 Spacer()
-                
-                // Hex-Anzeige der aktuellen Farbe
+
                 Text(hexString(for: canvasVM.currentColor))
                     .font(.system(size: 10, design: .monospaced))
                     .foregroundStyle(.secondary)
             }
-            
+
             // MARK: - Farbpalette Grid
-            
+
             LazyVGrid(
                 columns: Array(repeating: GridItem(.fixed(22), spacing: 3), count: columns),
                 spacing: 3
             ) {
-                ForEach(Array(palette.enumerated()), id: \.offset) { _, color in
+                ForEach(Array(displayPalette.enumerated()), id: \.offset) { _, color in
                     colorSwatch(color)
+                }
+            }
+
+            // MARK: - Saved Palettes
+
+            HStack(spacing: 4) {
+                // Zurück zur Standardpalette
+                if activeSavedPalette != nil {
+                    Button {
+                        activeSavedPalette = nil
+                    } label: {
+                        Text("Standard")
+                            .font(.system(size: 8, weight: .semibold))
+                    }
+                    .buttonStyle(.bordered)
+                    .controlSize(.mini)
+                }
+
+                // Gespeicherte Paletten laden
+                if !paletteManager.savedPalettes.isEmpty {
+                    Menu {
+                        ForEach(paletteManager.savedPalettes) { savedPalette in
+                            Button(savedPalette.name) {
+                                activeSavedPalette = savedPalette
+                            }
+                        }
+                    } label: {
+                        Label("Paletten", systemImage: "paintpalette")
+                            .font(.system(size: 8, weight: .semibold))
+                    }
+                    .controlSize(.mini)
+                }
+
+                Spacer()
+
+                // Aktuelle Palette speichern
+                Button {
+                    showSavePalette.toggle()
+                } label: {
+                    Image(systemName: "square.and.arrow.down")
+                        .font(.system(size: 10))
+                }
+                .buttonStyle(.plain)
+                .help("Palette speichern")
+            }
+
+            if showSavePalette {
+                HStack(spacing: 4) {
+                    TextField("Name", text: $newPaletteName)
+                        .textFieldStyle(.roundedBorder)
+                        .font(.system(size: 10))
+                        .controlSize(.mini)
+                    Button("OK") {
+                        let name = newPaletteName.isEmpty ? "Palette \(paletteManager.savedPalettes.count + 1)" : newPaletteName
+                        paletteManager.savePalette(name: name, colors: displayPalette)
+                        newPaletteName = ""
+                        showSavePalette = false
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .controlSize(.mini)
                 }
             }
         }

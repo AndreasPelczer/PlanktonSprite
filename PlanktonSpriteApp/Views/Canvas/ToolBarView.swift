@@ -16,17 +16,17 @@ struct ToolBarView: View {
     
     var body: some View {
         HStack(spacing: 6) {
-            
+
             // MARK: - Werkzeuge
-            
+
             ForEach(CanvasViewModel.Tool.allCases, id: \.self) { tool in
                 toolButton(tool)
             }
-            
+
             divider
-            
+
             // MARK: - Undo / Redo
-            
+
             actionButton(
                 icon: "arrow.uturn.backward",
                 label: "Rückgängig",
@@ -34,7 +34,7 @@ struct ToolBarView: View {
             ) {
                 canvasVM.undo()
             }
-            
+
             actionButton(
                 icon: "arrow.uturn.forward",
                 label: "Wiederherstellen",
@@ -42,11 +42,11 @@ struct ToolBarView: View {
             ) {
                 canvasVM.redo()
             }
-            
+
             divider
-            
+
             // MARK: - Grid Toggle
-            
+
             Toggle(isOn: $canvasVM.showGrid) {
                 Image(systemName: "grid")
                     .font(.system(size: 12, weight: .medium))
@@ -54,11 +54,40 @@ struct ToolBarView: View {
             .toggleStyle(.button)
             .controlSize(.small)
             .help("Rasterlinien ein/aus")
-            
+
             divider
-            
+
+            // MARK: - Zoom
+
+            actionButton(icon: "minus.magnifyingglass", label: "Zoom -", enabled: canvasVM.zoomScale > canvasVM.minZoom) {
+                canvasVM.zoomOut()
+            }
+
+            Text("\(Int(canvasVM.zoomScale * 100))%")
+                .font(.system(size: 9, weight: .bold, design: .monospaced))
+                .foregroundStyle(.secondary)
+                .frame(width: 36)
+
+            actionButton(icon: "plus.magnifyingglass", label: "Zoom +", enabled: canvasVM.zoomScale < canvasVM.maxZoom) {
+                canvasVM.zoomIn()
+            }
+
+            divider
+
+            // MARK: - Onion Skin Toggle
+
+            Toggle(isOn: $canvasVM.onionSkinEnabled) {
+                Image(systemName: "square.3.layers.3d")
+                    .font(.system(size: 12, weight: .medium))
+            }
+            .toggleStyle(.button)
+            .controlSize(.small)
+            .help("Onion Skin")
+
+            divider
+
             // MARK: - Canvas leeren
-            
+
             actionButton(
                 icon: "trash",
                 label: "Frame leeren",
@@ -136,9 +165,11 @@ struct ToolBarView: View {
     /// deshalb der Umweg über die Zahl.
     private func shortcutKey(for tool: CanvasViewModel.Tool) -> KeyEquivalent {
         switch tool {
-        case .pen:    return "1"
-        case .eraser: return "2"
-        case .fill:   return "3"
+        case .pen:       return "1"
+        case .eraser:    return "2"
+        case .fill:      return "3"
+        case .line:      return "4"
+        case .rectangle: return "5"
         }
     }
 }

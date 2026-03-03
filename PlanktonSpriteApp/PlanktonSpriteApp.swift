@@ -17,10 +17,11 @@ struct PlanktonSpriteApp: App {
 
     // MARK: - ViewModels
 
-    /// Die drei ViewModels als @StateObject – sie leben so lange wie die App.
+    /// Die ViewModels als @StateObject – sie leben so lange wie die App.
     @StateObject private var frameVM = FrameViewModel()
     @StateObject private var canvasVM = CanvasViewModel()
     @StateObject private var exportVM = ExportViewModel()
+    @StateObject private var paletteManager = PaletteManager()
 
     // MARK: - Datei-Dialog State
 
@@ -41,9 +42,11 @@ struct PlanktonSpriteApp: App {
                 .environmentObject(frameVM)
                 .environmentObject(canvasVM)
                 .environmentObject(exportVM)
+                .environmentObject(paletteManager)
                 .onAppear {
                     canvasVM.connect(to: frameVM)
                     exportVM.connect(to: frameVM)
+                    frameVM.startAutosave()
                 }
                 // MARK: - Speichern unter (plattformübergreifend)
                 .fileExporter(
